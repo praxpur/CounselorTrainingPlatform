@@ -1,0 +1,75 @@
+.admin-campus {
+  height: 200rpx;
+}
+.home-campus {
+  height: 280rpx;
+  margin-bottom: 28rpx;
+}
+.admin-greeting {
+  margin-top: 24rpx;
+  color: #64748b;
+  font-size: 27rpx;
+}
+.admin-menu {
+  background: #fff;
+  border-radius: 20rpx;
+  overflow: hidden;
+}
+.admin-item {
+  display: flex;
+  align-items: center;
+  padding: 28rpx;
+  gap: 22rpx;
+  border-bottom: 1rpx solid #eef0f5;
+}
+.admin-item:last-child {
+  border-bottom: 0;
+}
+.admin-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 76rpx;
+  height: 76rpx;
+  line-height: 76rpx;
+  text-align: center;
+  border-radius: 18rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.admin-icon.blue {
+  background: #eaf0ff;
+  color: #25489c;
+}
+.admin-icon.green {
+  background: #e6f7ef;
+  color: #169342;
+}
+.admin-icon.orange {
+  background: #fff2df;
+  color: #c81d09;
+}
+.admin-icon.purple {
+  background: #f1eaff;
+  color: #8d62ce;
+}
+.admin-content {
+  flex: 1;
+  min-width: 0;
+}
+.arrow {
+  color: #aab0bd;
+  font-size: 42rpx;
+}
+.logout {
+  margin-top: 32rpx;
+  color: #737b8d;
+  background: #fff;
+}
+
+.admin-icon-image {
+  display: block;
+  width: 48rpx;
+  height: 48rpx;
+}

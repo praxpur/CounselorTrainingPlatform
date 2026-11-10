@@ -1,0 +1,60 @@
+<view class="page-shell">
+  <navigation-bar title="用户名单管理" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen" scroll-into-view="{{scrollTarget}}">
+    <view class="container">
+      <view class="page-toolbar">
+        <view class="title">辅导员名单</view>
+        <button size="mini" class="button-mini primary" bindtap="create">新增用户</button>
+      </view>
+      <view class="card" wx:if="{{formVisible}}" id="user-editor">
+        <view class="title">{{editing ? '编辑辅导员' : '新增辅导员'}}</view>
+        <view class="muted">工号保存后不可修改；停用用户会保留报名记录。</view>
+        <input
+          placeholder="工号（字母、数字、下划线或连字符）"
+          value="{{form.id}}"
+          disabled="{{editing}}"
+          data-field="id"
+          bindinput="input"
+        />
+        <input placeholder="姓名" value="{{form.name}}" data-field="name" bindinput="input" />
+        <input
+          placeholder="学院 / 部门"
+          value="{{form.department}}"
+          data-field="department"
+          bindinput="input"
+        />
+        <button class="primary" bindtap="save" loading="{{busy}}">
+          {{editing ? '保存修改' : '添加用户'}}
+        </button>
+        <button bindtap="reset">取消</button>
+      </view>
+  
+      <view class="search">
+        <input
+          placeholder="搜索工号、姓名或部门"
+          value="{{query}}"
+          bindinput="searchInput"
+          confirm-type="search"
+          bindconfirm="load"
+        />
+        <button class="button-mini" size="mini" bindtap="load">搜索</button>
+      </view>
+      <view class="card" wx:for="{{users}}" wx:key="id">
+        <view class="title">
+          {{item.name}}
+          <text class="status {{!item.enabled ? 'disabled' : ''}}">
+            {{item.enabled ? '· 已启用' : '· 已停用'}}
+          </text>
+        </view>
+        <view class="muted">工号：{{item.id}} · {{item.department}}</view>
+        <view class="actions">
+          <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="edit">编辑</button>
+          <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="toggle">
+            {{item.enabled ? '停用' : '启用'}}
+          </button>
+        </view>
+      </view>
+      <view class="muted" wx:if="{{!users.length}}">暂无匹配用户</view>
+    </view>
+  </scroll-view>
+</view>

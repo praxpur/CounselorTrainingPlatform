@@ -1,0 +1,58 @@
+<view class="page-shell">
+  <navigation-bar title="{{editing ? '编辑活动' : '活动发布'}}" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <view class="card">
+        <input placeholder="活动名称" value="{{form.title}}" data-field="title" bindinput="input" />
+        <input
+          placeholder="活动地点"
+          value="{{form.location}}"
+          data-field="location"
+          bindinput="input"
+        />
+        <textarea
+          placeholder="活动介绍"
+          value="{{form.description}}"
+          data-field="description"
+          bindinput="input"
+        />
+        <view class="line">开始时间</view>
+        <view class="row">
+          <picker mode="date" value="{{form.startDate}}" data-field="startDate" bindchange="input">
+            {{form.startDate || '选择日期'}}
+          </picker>
+          <picker mode="time" value="{{form.startTime}}" data-field="startTime" bindchange="input">
+            {{form.startTime || '选择时间'}}
+          </picker>
+        </view>
+        <view class="line">结束时间</view>
+        <view class="row">
+          <picker mode="date" value="{{form.endDate}}" data-field="endDate" bindchange="input">
+            {{form.endDate || '选择日期'}}
+          </picker>
+          <picker mode="time" value="{{form.endTime}}" data-field="endTime" bindchange="input">
+            {{form.endTime || '选择时间'}}
+          </picker>
+        </view>
+        <input
+          type="number"
+          placeholder="活动学时（分钟）"
+          value="{{form.creditMinutes}}"
+          data-field="creditMinutes"
+          bindinput="input"
+        />
+        <input
+          type="number"
+          placeholder="报名人数上限"
+          value="{{form.capacity}}"
+          data-field="capacity"
+          bindinput="input"
+        />
+        <button class="primary" bindtap="save" loading="{{busy}}">
+          {{editing ? '保存修改' : '发布活动'}}
+        </button>
+        <button bindtap="reset">取消</button>
+      </view>
+    </view>
+  </scroll-view>
+</view>

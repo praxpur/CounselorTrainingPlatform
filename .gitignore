@@ -1,0 +1,31 @@
+# Dependencies and local development tools
+node_modules/
+.npm-cache/
+.format-tools/
+tmp/
+coverage/
+UI/*.pdf
+
+# Database, uploaded/exported data, credentials and runtime logs
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+server/uploads/
+server/exports/
+
+# Per-machine editor and WeChat settings
+project.private.config.json
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

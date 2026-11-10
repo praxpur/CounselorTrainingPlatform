@@ -1,0 +1,7 @@
+*.db
+*.db-shm
+*.db-wal
+.env
+node_modules/
+.npm-cache/
+*.log

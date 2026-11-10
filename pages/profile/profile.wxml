@@ -1,0 +1,16 @@
+<view class="page-shell">
+  <navigation-bar title="我的" back="{{false}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <school-brand></school-brand>
+      <view class="card">
+        <view class="heading">{{user.name}}</view>
+        <view class="line">{{user.department}}</view>
+        <view class="muted">辅导员</view>
+      </view>
+      <navigator url="/pages/experiences/experiences" class="card">我的培训经历 ›</navigator>
+      <button bindtap="logout">退出登录</button>
+      <view class="school-footer">济南大学学生工作处</view>
+    </view>
+  </scroll-view>
+</view>

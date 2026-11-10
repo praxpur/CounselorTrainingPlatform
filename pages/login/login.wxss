@@ -1,0 +1,12 @@
+.login-campus {
+  height: 300rpx;
+}
+.login-panel {
+  margin-top: 24rpx;
+}
+.login-hint {
+  color: #8a94a5;
+  text-align: center;
+  margin-top: 24rpx;
+  font-size: 23rpx;
+}

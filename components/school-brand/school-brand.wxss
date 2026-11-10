@@ -1,0 +1,27 @@
+.school-brand {
+  display: flex;
+  align-items: center;
+  padding: 24rpx 0;
+}
+.school-seal {
+  width: 104rpx;
+  height: 104rpx;
+  flex-shrink: 0;
+  margin-right: 24rpx;
+}
+.school-brand-copy {
+  flex: 1;
+  min-width: 0;
+}
+.school-brand-subtitle {
+  color: #64748b;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+.school-brand-title {
+  color: #25489c;
+  font-size: 36rpx;
+  line-height: 1.5;
+  font-weight: 600;
+  margin-top: 4rpx;
+}

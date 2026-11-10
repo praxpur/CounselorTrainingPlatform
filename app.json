@@ -1,0 +1,57 @@
+{
+  "pages": [
+    "pages/index/index",
+    "pages/course/list",
+    "pages/course/detail",
+    "pages/record/record",
+    "pages/profile/profile",
+    "pages/login/login",
+    "pages/admin/admin",
+    "pages/attendees/attendees",
+    "pages/people/people",
+    "pages/experiences/experiences",
+    "pages/reviews/reviews",
+    "pages/ranking/ranking",
+    "pages/users/users",
+    "pages/admin/publish"
+  ],
+  "window": {
+    "navigationBarTextStyle": "black",
+    "navigationStyle": "custom"
+  },
+  "tabBar": {
+    "color": "#9A9BA8",
+    "selectedColor": "#25489C",
+    "backgroundColor": "#FFFFFF",
+    "list": [
+      {
+        "pagePath": "pages/index/index",
+        "text": "首页",
+        "iconPath": "assets/tabbar/home-normal.png",
+        "selectedIconPath": "assets/tabbar/home-active.png"
+      },
+      {
+        "pagePath": "pages/course/list",
+        "text": "培训活动",
+        "iconPath": "assets/tabbar/activity-normal.png",
+        "selectedIconPath": "assets/tabbar/activity-active.png"
+      },
+      {
+        "pagePath": "pages/record/record",
+        "text": "我的报名",
+        "iconPath": "assets/tabbar/record-normal.png",
+        "selectedIconPath": "assets/tabbar/record-active.png"
+      },
+      {
+        "pagePath": "pages/profile/profile",
+        "text": "我的",
+        "iconPath": "assets/tabbar/profile-normal.png",
+        "selectedIconPath": "assets/tabbar/profile-active.png"
+      }
+    ]
+  },
+  "style": "v2",
+  "renderer": "webview",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
+}

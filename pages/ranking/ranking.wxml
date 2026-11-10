@@ -1,0 +1,22 @@
+<view class="page-shell">
+  <navigation-bar title="年度学时排名" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <view class="row">
+        <input type="number" value="{{year}}" bindinput="input" placeholder="年份" />
+        <button class="button-mini" size="mini" bindtap="load">查询</button>
+      </view>
+      <button class="primary" bindtap="exportData" loading="{{exporting}}" disabled="{{exporting}}">
+        导出 {{year}} 年排名为 Excel
+      </button>
+      <view class="muted">
+        按管理员确认参加的活动统计，培训经历不重复计时；学时相同并列。单位：分钟。
+      </view>
+      <view class="card" wx:for="{{rows}}" wx:key="id">
+        <view class="title">第 {{item.rank}} 名　{{item.name}}</view>
+        <view class="muted">{{item.department}} · 工号 {{item.id}}</view>
+        <view class="line">确认参加 {{item.eventCount}} 次 · {{item.totalMinutes}} 分钟</view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

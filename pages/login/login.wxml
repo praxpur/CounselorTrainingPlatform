@@ -1,0 +1,27 @@
+<view class="page-shell">
+  <navigation-bar title="济南大学 · 辅导员培训" back="{{false}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <school-brand></school-brand>
+      <view class="campus-hero login-campus">
+        <image class="campus-photo" src="/assets/brand/shenghua-square.jpg" mode="aspectFill"></image>
+        <view class="campus-caption">济南大学 · 升华广场</view>
+      </view>
+      <view class="card login-panel">
+        <view class="title">登录培训平台</view>
+        <view class="muted">查看培训活动，记录成长历程</view>
+        <view class="field-label">工号</view>
+        <input placeholder="请输入测试工号" data-field="id" bindinput="input" />
+        <view class="field-label">姓名</view>
+        <input placeholder="请输入姓名" data-field="name" bindinput="input" />
+        <view class="field-label">学院 / 部门</view>
+        <input placeholder="请输入学院或部门" data-field="department" bindinput="input" />
+        <button class="primary" loading="{{loading}}" disabled="{{loading}}" bindtap="login">
+          登录
+        </button>
+        <view class="login-hint">开发测试环境 · 当前登录用于功能验证</view>
+      </view>
+      <view class="school-footer">济南大学学生工作处</view>
+    </view>
+  </scroll-view>
+</view>

@@ -1,0 +1,35 @@
+<view class="page-shell">
+  <navigation-bar title="人员参加情况" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <block wx:if="{{!selected}}">
+        <button
+          class="primary"
+          bindtap="exportData"
+          loading="{{exporting}}"
+          disabled="{{exporting}}"
+        >
+          导出人员报名情况为 Excel
+        </button>
+        <view class="card" wx:for="{{people}}" wx:key="id" data-id="{{item.id}}" bindtap="select">
+          <view class="title">{{item.name}} · {{item.department}}</view>
+          <view class="muted">工号 {{item.id}}　报名 {{item.registeredCount}} 次</view>
+        </view>
+        <view class="muted" wx:if="{{!people.length}}">暂无人员</view>
+      </block>
+      <block wx:else>
+        <button bindtap="back">返回人员列表</button>
+        <view class="heading">{{selected.name}} 的报名记录</view>
+        <view class="card" wx:for="{{records}}" wx:key="id">
+          <view class="title">{{item.title}}</view>
+          <view class="muted">{{item.startsText}} · {{item.location}}</view>
+          <view class="line">
+            {{item.status === 'cancelled' ? '活动已取消' : item.confirmedAt ? '已确认参加' :
+            '已报名，待确认参加'}}
+          </view>
+        </view>
+        <view class="muted" wx:if="{{!records.length}}">暂无报名记录</view>
+      </block>
+    </view>
+  </scroll-view>
+</view>

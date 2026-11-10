@@ -1,0 +1,15 @@
+<view class="page-shell">
+  <navigation-bar title="培训活动" back="{{false}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <view class="card" wx:for="{{activities}}" wx:key="id" data-id="{{item.id}}" bindtap="open">
+        <view class="title">{{item.title}}</view>
+        <view class="muted">{{item.startsText}} · {{item.location}}</view>
+        <view class="muted">
+          报名 {{item.registeredCount}} / {{item.capacity}}　{{item.registered ? '已报名' : ''}}
+        </view>
+      </view>
+      <view class="muted" wx:if="{{!activities.length}}">暂无活动</view>
+    </view>
+  </scroll-view>
+</view>

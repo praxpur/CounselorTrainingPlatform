@@ -1,0 +1,48 @@
+<view class="page-shell">
+  <navigation-bar title="培训经历审核" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <view class="page-toolbar">
+        <view class="review-heading">
+          <view class="title">待审批</view>
+          <text class="review-badge">{{pendingCount}}</text>
+        </view>
+        <button size="mini" class="button-mini" bindtap="toggleRecords">
+          {{showAll ? '只看待审批' : '查看全部'}}
+        </button>
+      </view>
+      <view class="card" wx:for="{{records}}" wx:key="id">
+        <view class="title">{{item.title}}</view>
+        <view class="muted">{{item.name}} · {{item.department}} · {{item.userId}}</view>
+        <view class="line">{{item.description}}</view>
+        <block wx:if="{{item.status === 'pending'}}">
+          <input placeholder="审核意见（驳回时必填）" data-id="{{item.id}}" bindinput="input" />
+          <button
+            class="button-mini"
+            size="mini"
+            data-id="{{item.id}}"
+            data-status="approved"
+            bindtap="review"
+          >
+            通过
+          </button>
+          <button
+            class="button-mini"
+            size="mini"
+            data-id="{{item.id}}"
+            data-status="rejected"
+            bindtap="review"
+          >
+            驳回
+          </button>
+        </block>
+        <view wx:else class="muted">
+          {{item.status === 'approved' ? '已通过' : '已驳回'}}　{{item.reviewNote}}
+        </view>
+      </view>
+      <view class="muted" wx:if="{{!records.length}}">
+        {{showAll ? '暂无培训经历' : '暂无待审批记录'}}
+      </view>
+    </view>
+  </scroll-view>
+</view>

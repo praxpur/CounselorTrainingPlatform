@@ -1,0 +1,16 @@
+<view class="page-shell">
+  <navigation-bar title="报名人员" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <view class="card" wx:for="{{attendees}}" wx:key="id">
+        <view class="title">{{item.name}} · {{item.department}}</view>
+        <view class="muted">工号：{{item.id}}　报名：{{item.registeredText}}</view>
+        <view class="line" wx:if="{{item.confirmedAt}}">已确认参加</view>
+        <button class="button-mini" wx:else size="mini" data-id="{{item.id}}" bindtap="confirm">
+          确认参加
+        </button>
+      </view>
+      <view class="muted" wx:if="{{!attendees.length}}">暂无报名人员</view>
+    </view>
+  </scroll-view>
+</view>
