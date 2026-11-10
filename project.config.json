@@ -27,6 +27,10 @@
     "ignore": [
       {
         "type": "folder",
+        "value": "scripts"
+      },
+      {
+        "type": "folder",
         "value": "UI"
       },
       {

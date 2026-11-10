@@ -2,6 +2,9 @@ const http = require('node:http')
 const { sendWorkbook } = require('./exports')
 const { personalRecords, personalAnnual } = require('./personal')
 const crypto = require('node:crypto')
+const fs = require('node:fs/promises')
+const pathModule = require('node:path')
+let fullFontBuffer
 const { DatabaseSync } = require('node:sqlite')
 const db = new DatabaseSync(
   process.env.DB_PATH || require('node:path').join(__dirname, 'training.db'),
@@ -204,6 +207,19 @@ const server = http.createServer(async (req, res) => {
       path = url.pathname,
       method = req.method
     if (path === '/health' && method === 'GET') return send(res, 200, { ok: true })
+    if (path === '/fonts/noto-sans-sc-full.woff2' && method === 'GET') {
+      if (!fullFontBuffer)
+        fullFontBuffer = await fs.readFile(
+          pathModule.join(__dirname, 'fonts/noto-sans-sc-full.woff2'),
+        )
+      res.writeHead(200, {
+        'Content-Type': 'font/woff2',
+        'Content-Length': fullFontBuffer.length,
+        'Access-Control-Allow-Origin': '*',
+        'Cache-Control': 'public, max-age=86400',
+      })
+      return res.end(fullFontBuffer)
+    }
     // This is deliberately disabled in production. Replace with a verified school identity exchange.
     if (path === '/api/auth/dev' && method === 'POST') {
       if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DEV_LOGIN !== '1')
@@ -463,8 +479,23 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, { ok: true })
     }
     if (path === '/api/activities' && method === 'GET') {
+      const yearText = url.searchParams.get('year')
+      let yearFilter = ''
+      const args = []
+      if (yearText !== null) {
+        const year = Number(yearText)
+        if (!Number.isInteger(year) || year < 2000 || year > 2100) fail(400, '年份不正确')
+        yearFilter = ' AND a.starts_at>=? AND a.starts_at<?'
+        args.push(
+          Date.parse(year + '-01-01T00:00:00+08:00'),
+          Date.parse(year + 1 + '-01-01T00:00:00+08:00'),
+        )
+      }
       const ids = all(
-        "SELECT a.id FROM activities a WHERE a.status='published' ORDER BY CASE WHEN a.ends_at>? THEN 0 ELSE 1 END, a.starts_at DESC LIMIT 500",
+        "SELECT a.id FROM activities a WHERE a.status='published'" +
+          yearFilter +
+          ' ORDER BY CASE WHEN a.ends_at>? THEN 0 ELSE 1 END, a.starts_at DESC LIMIT 500',
+        ...args,
         Date.now(),
       )
       return send(

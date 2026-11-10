@@ -238,6 +238,7 @@ test('活动管理、权限和并发报名', async () => {
   const exported = new ExcelJS.Workbook()
   await exported.xlsx.load(Buffer.from(await exportResponse.arrayBuffer()))
   const rankingSheet = exported.worksheets[0]
+  assert.equal(rankingSheet.getCell('A1').font.name, 'Noto Sans CJK SC')
   const exportedPerson = rankingSheet
     .getRows(2, rankingSheet.rowCount - 1)
     .find((row) => row.getCell(2).value === who)
@@ -411,6 +412,17 @@ test('活动管理、权限和并发报名', async () => {
   assert.equal(boundaryReport.records.length, 1)
   assert.equal(boundaryReport.totalMinutes, 45)
   assert.equal(boundaryReport.months[0].minutes, 45)
+  const yearActivities = await call('/api/activities?year=2025', 'GET', null, user)
+  assert.equal(yearActivities.status, 200)
+  assert.equal(yearActivities.body.length, 1)
+  assert.equal(yearActivities.body[0].startsAt, Date.parse('2025-01-01T00:30:00+08:00'))
+  assert.equal((await call('/api/activities?year=2024', 'GET', null, user)).body.length, 1)
+  assert.equal((await call('/api/activities?year=invalid', 'GET', null, user)).status, 400)
+  const fontResponse = await fetch(base + '/fonts/noto-sans-sc-full.woff2')
+  assert.equal(fontResponse.status, 200)
+  assert.equal(fontResponse.headers.get('content-type'), 'font/woff2')
+  const fontBytes = Buffer.from(await fontResponse.arrayBuffer())
+  assert.equal(fontBytes.toString('ascii', 0, 4), 'wOF2')
 })
 after(() => {
   server.close()

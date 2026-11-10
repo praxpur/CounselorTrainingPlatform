@@ -5,6 +5,10 @@ node_modules/
 tmp/
 coverage/
 UI/*.pdf
+server/.font-tools/
+server/.pip-cache/
+server/.pip-temp/
+server/fonts/*.otf
 
 # Database, uploaded/exported data, credentials and runtime logs
 *.db

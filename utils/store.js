@@ -1,5 +1,6 @@
 // 开发工具中使用本机地址；真机和正式部署需要配置学校 HTTPS 域名。
 const API_BASE = 'http://127.0.0.1:3000'
+const { ensureFontForText } = require('./fonts')
 const TOKEN_KEY = 'training_token_v2'
 function request(path, method, data) {
   return new Promise((resolve, reject) =>
@@ -9,8 +10,10 @@ function request(path, method, data) {
       data,
       header: { Authorization: 'Bearer ' + (wx.getStorageSync(TOKEN_KEY) || '') },
       success(res) {
-        if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data)
-        else {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          ensureFontForText(res.data, API_BASE)
+          resolve(res.data)
+        } else {
           if (res.statusCode === 401) wx.removeStorageSync(TOKEN_KEY)
           const error = new Error((res.data && res.data.error) || '请求失败')
           error.code = res.data && res.data.code
