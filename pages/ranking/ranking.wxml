@@ -5,10 +5,8 @@
       <view class="row">
         <input type="number" value="{{year}}" bindinput="input" placeholder="年份" />
         <button class="button-mini" size="mini" bindtap="load">查询</button>
+        <button class="button-mini export-button" size="mini" bindtap="exportData" loading="{{exporting}}" disabled="{{exporting}}">导出 Excel</button>
       </view>
-      <button class="primary" bindtap="exportData" loading="{{exporting}}" disabled="{{exporting}}">
-        导出 {{year}} 年排名为 Excel
-      </button>
       <view class="muted">
         按管理员确认参加的活动统计，培训经历不重复计时；学时相同并列。单位：分钟。
       </view>

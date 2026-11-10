@@ -3,14 +3,10 @@
   <scroll-view scroll-y class="screen">
     <view class="container">
       <block wx:if="{{!selected}}">
-        <button
-          class="primary"
-          bindtap="exportData"
-          loading="{{exporting}}"
-          disabled="{{exporting}}"
-        >
-          导出人员报名情况为 Excel
-        </button>
+        <view class="page-toolbar">
+          <view class="muted">人员报名及参加记录</view>
+          <button class="button-mini export-button" size="mini" bindtap="exportData" loading="{{exporting}}" disabled="{{exporting}}">导出 Excel</button>
+        </view>
         <view class="card" wx:for="{{people}}" wx:key="id" data-id="{{item.id}}" bindtap="select">
           <view class="title">{{item.name}} · {{item.department}}</view>
           <view class="muted">工号 {{item.id}}　报名 {{item.registeredCount}} 次</view>

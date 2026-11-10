@@ -13,10 +13,16 @@ Page({
     }
   },
   create() {
-    wx.navigateTo({ url: '/pages/admin/publish' })
+    wx.navigateTo({
+      url: '/pages/activity-publish/activity-publish',
+      fail(error) {
+        console.error('打开活动发布页失败', error)
+        wx.showToast({ title: '发布页加载失败，请完整重新编译项目', icon: 'none', duration: 3000 })
+      },
+    })
   },
   edit(event) {
-    wx.navigateTo({ url: '/pages/admin/publish?id=' + event.currentTarget.dataset.id })
+    wx.navigateTo({ url: '/pages/activity-publish/activity-publish?id=' + event.currentTarget.dataset.id })
   },
   attendees(event) {
     wx.navigateTo({ url: '/pages/attendees/attendees?id=' + event.currentTarget.dataset.id })

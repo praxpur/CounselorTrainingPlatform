@@ -129,6 +129,14 @@ button.primary {
   font-size: 26rpx;
   line-height: 68rpx;
 }
+.export-button {
+  color: #25489c;
+  background: #eaf0fa;
+  margin: 0;
+  font-size: 24rpx;
+  line-height: 64rpx;
+  padding: 0 20rpx;
+}
 input {
   width: 100%;
   height: 96rpx;
