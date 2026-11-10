@@ -1,5 +1,6 @@
 const http = require('node:http')
 const { sendWorkbook } = require('./exports')
+const { personalRecords, personalAnnual } = require('./personal')
 const crypto = require('node:crypto')
 const { DatabaseSync } = require('node:sqlite')
 const db = new DatabaseSync(
@@ -235,6 +236,65 @@ const server = http.createServer(async (req, res) => {
     }
     if (path.startsWith('/api/auth/')) fail(503, '学校统一身份认证尚未接入')
     const u = requireUser(req)
+    if (path === '/api/my/records' && method === 'GET') {
+      return send(res, 200, personalRecords(db, u.id))
+    }
+    if (['/api/my/annual', '/api/my/exports/annual'].includes(path) && method === 'GET') {
+      const year = Number(
+        url.searchParams.get('year') || new Date(Date.now() + 8 * 3600000).getUTCFullYear(),
+      )
+      if (!Number.isInteger(year) || year < 2000 || year > 2100) fail(400, '年份不正确')
+      const report = personalAnnual(db, u.id, year)
+      if (path === '/api/my/annual') return send(res, 200, report)
+      return await sendWorkbook(res, year + '-我的年度学时.xlsx', [
+        {
+          name: '年度汇总',
+          columns: [
+            { header: '年份', key: 'year', width: 12 },
+            { header: '工号', key: 'id', width: 20 },
+            { header: '姓名', key: 'name', width: 18 },
+            { header: '学院 / 部门', key: 'department', width: 28 },
+            { header: '报名活动数（含取消）', key: 'activityCount', width: 26 },
+            { header: '审核通过数', key: 'approvedCount', width: 18 },
+            { header: '未审核数（含未提交）', key: 'pendingCount', width: 26 },
+            { header: '驳回数', key: 'rejectedCount', width: 12 },
+            { header: '取消数', key: 'cancelledCount', width: 12 },
+            { header: '认定学时（分钟）', key: 'totalMinutes', width: 24 },
+          ],
+          rows: [{ ...report, id: u.id, name: u.name, department: u.department }],
+        },
+        {
+          name: '我的活动记录',
+          columns: [
+            { header: '活动名称', key: 'title', width: 36 },
+            {
+              header: '活动时间（北京时间）',
+              key: 'activityDate',
+              width: 28,
+              style: { numFmt: 'yyyy-mm-dd hh:mm' },
+            },
+            { header: '地点', key: 'location', width: 28 },
+            { header: '活动学时（分钟）', key: 'creditMinutes', width: 24 },
+            { header: '认定学时（分钟）', key: 'recognizedMinutes', width: 24 },
+            { header: '审核情况', key: 'reviewLabel', width: 20 },
+            { header: '培训经历', key: 'experience', width: 50 },
+            { header: '审核意见', key: 'reviewNote', width: 40 },
+            {
+              header: '确认参加时间（北京时间）',
+              key: 'confirmationDate',
+              width: 30,
+              style: { numFmt: 'yyyy-mm-dd hh:mm' },
+            },
+          ],
+          rows: report.records.map((r) => ({
+            ...r,
+            location: r.location || '地点待定',
+            activityDate: new Date(r.startsAt + 8 * 3600000),
+            confirmationDate: r.confirmedAt ? new Date(r.confirmedAt + 8 * 3600000) : null,
+          })),
+        },
+      ])
+    }
     if (path === '/api/me' && method === 'GET') return send(res, 200, u)
     if (path === '/api/logout' && method === 'POST') {
       run('DELETE FROM sessions WHERE token_hash=?', hash(req.headers.authorization.slice(7)))

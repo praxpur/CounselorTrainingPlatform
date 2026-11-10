@@ -13,7 +13,8 @@
     "pages/experiences/experiences",
     "pages/reviews/reviews",
     "pages/ranking/ranking",
-    "pages/users/users"
+    "pages/users/users",
+    "pages/my-hours/my-hours"
   ],
   "window": {
     "navigationBarTextStyle": "black",
@@ -38,7 +39,7 @@
       },
       {
         "pagePath": "pages/record/record",
-        "text": "我的报名",
+        "text": "培训记录",
         "iconPath": "assets/tabbar/record-normal.png",
         "selectedIconPath": "assets/tabbar/record-active.png"
       },

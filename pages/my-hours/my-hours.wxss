@@ -1,0 +1,64 @@
+.hours-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin-bottom: 24rpx;
+}
+.hours-year {
+  padding: 14rpx 26rpx;
+  background: #eaf0fa;
+}
+.hours-year .heading {
+  color: #25489c;
+}
+.stat-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+.stat-card {
+  width: 48%;
+  background: #fff;
+  border-radius: 16rpx;
+  padding: 20rpx;
+  margin-bottom: 20rpx;
+}
+.stat-card .muted {
+  font-size: 23rpx;
+  margin-top: 0;
+}
+.stat-number {
+  color: #25489c;
+  font-size: 44rpx;
+  font-weight: 600;
+}
+.month-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  margin-top: 22rpx;
+}
+.month-label {
+  width: 60rpx;
+  color: #64748b;
+  font-size: 24rpx;
+}
+.month-track {
+  flex: 1;
+  height: 18rpx;
+  background: #eef1f8;
+  border-radius: 9rpx;
+  overflow: hidden;
+}
+.month-fill {
+  height: 100%;
+  background: #25489c;
+  border-radius: 9rpx;
+}
+.month-value {
+  width: 84rpx;
+  text-align: right;
+  font-size: 24rpx;
+  color: #38445f;
+}

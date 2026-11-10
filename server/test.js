@@ -135,6 +135,8 @@ test('活动管理、权限和并发报名', async () => {
     (await call('/api/activities', 'GET', null, user)).body.some((activity) => activity.id === id),
   )
   const pastYear = new Date(past + 8 * 3600000).getUTCFullYear()
+  const beforeSubmission = await call('/api/my/records', 'GET', null, repeatToken)
+  assert.equal(beforeSubmission.body[0].reviewStatus, 'unsubmitted')
   const submitted = await call(
     '/api/experiences',
     'POST',
@@ -142,6 +144,10 @@ test('活动管理、权限和并发报名', async () => {
     repeatToken,
   )
   assert.equal(submitted.status, 201)
+  const pendingPersonal = await call('/api/my/records', 'GET', null, repeatToken)
+  assert.equal(pendingPersonal.body.length, 1)
+  assert.equal(pendingPersonal.body[0].reviewStatus, 'pending')
+  assert.equal(pendingPersonal.body[0].experience, '培训经历')
   assert.equal((await call('/api/admin/review-count', 'GET', null, admin)).body.pendingCount, 1)
   assert.equal(
     (
@@ -194,6 +200,35 @@ test('活动管理、权限和并发报名', async () => {
   rank = await call('/api/admin/ranking?year=' + pastYear, 'GET', null, admin)
   assert.equal(rank.body.rows.find((x) => x.id === who).totalMinutes, 60)
   assert.equal(rank.body.rows.find((x) => x.id === who).eventCount, 1)
+  const personalReport = await call('/api/my/annual?year=' + pastYear, 'GET', null, repeatToken)
+  assert.equal(personalReport.body.totalMinutes, 60)
+  assert.equal(personalReport.body.approvedCount, 1)
+  assert.equal(personalReport.body.records.length, 1)
+  assert.equal(
+    personalReport.body.months.reduce((sum, month) => sum + month.minutes, 0),
+    60,
+  )
+  assert.equal(personalReport.body.records[0].reviewStatus, 'approved')
+  const otherPersonal = await call(
+    '/api/my/annual?year=' + pastYear + '&userId=' + who,
+    'GET',
+    null,
+    user,
+  )
+  assert.equal(otherPersonal.body.records.length, 0)
+  assert.equal((await call('/api/my/annual?year=invalid', 'GET', null, repeatToken)).status, 400)
+  assert.equal((await call('/api/my/records')).status, 401)
+  const personalExportResponse = await fetch(base + '/api/my/exports/annual?year=' + pastYear, {
+    headers: { authorization: 'Bearer ' + repeatToken },
+  })
+  assert.equal(personalExportResponse.status, 200)
+  const personalWorkbook = new ExcelJS.Workbook()
+  await personalWorkbook.xlsx.load(Buffer.from(await personalExportResponse.arrayBuffer()))
+  assert.equal(personalWorkbook.worksheets[0].getCell('B2').value, who)
+  assert.equal(personalWorkbook.worksheets[0].getCell('J2').value, 60)
+  assert.equal(personalWorkbook.worksheets[1].rowCount, 2)
+  assert.equal(personalWorkbook.worksheets[1].getCell('E2').value, 60)
+  assert.equal(personalWorkbook.worksheets[1].getCell('F2').value, '已审核通过')
   assert.equal((await call('/api/admin/review-count', 'GET', null, admin)).body.pendingCount, 0)
   const exportResponse = await fetch(base + '/api/admin/exports/ranking?year=' + pastYear, {
     headers: { authorization: 'Bearer ' + admin },
@@ -251,6 +286,9 @@ test('活动管理、权限和并发报名', async () => {
     409,
   )
   assert.equal((await call('/api/admin/activities/' + id, 'DELETE', null, admin)).status, 200)
+  const cancelledPersonal = await call('/api/my/annual?year=' + pastYear, 'GET', null, repeatToken)
+  assert.equal(cancelledPersonal.body.totalMinutes, 0)
+  assert.equal(cancelledPersonal.body.records[0].reviewStatus, 'cancelled')
   assert.equal(
     (await call('/api/activities', 'GET', null, user)).body.some((activity) => activity.id === id),
     false,
@@ -321,6 +359,58 @@ test('活动管理、权限和并发报名', async () => {
       400,
     )
   }
+  db.prepare('UPDATE activities SET starts_at=? WHERE id=?').run(Date.now() - 60000, optionalId)
+  const rejectedSubmission = await call(
+    '/api/experiences',
+    'POST',
+    { activityId: optionalId, description: '第一次经历' },
+    user,
+  )
+  assert.equal(
+    (
+      await call(
+        '/api/admin/experiences/' + rejectedSubmission.body.id + '/review',
+        'POST',
+        { status: 'rejected', note: '请补充内容' },
+        admin,
+      )
+    ).status,
+    200,
+  )
+  const rejectedRecord = (await call('/api/my/records', 'GET', null, user)).body[0]
+  assert.equal(rejectedRecord.reviewStatus, 'rejected')
+  assert.equal(rejectedRecord.canSubmit, true)
+  assert.equal(
+    (
+      await call(
+        '/api/experiences',
+        'POST',
+        { activityId: optionalId, description: '补充后的经历' },
+        user,
+      )
+    ).status,
+    201,
+  )
+  const resubmittedRecords = (await call('/api/my/records', 'GET', null, user)).body
+  assert.equal(resubmittedRecords.length, 1)
+  assert.equal(resubmittedRecords[0].reviewStatus, 'pending')
+  assert.equal(resubmittedRecords[0].experience, '补充后的经历')
+  const { personalAnnual } = require('./personal')
+  for (const date of ['2024-12-31T23:30:00+08:00', '2025-01-01T00:30:00+08:00']) {
+    const start = Date.parse(date)
+    const row = db
+      .prepare(
+        "INSERT INTO activities(title,description,location,starts_at,ends_at,capacity,credit_minutes,created_at) VALUES('跨年测试','','',?,?,0,45,?)",
+      )
+      .run(start, start + 3600000, Date.now())
+    db.prepare(
+      'INSERT INTO registrations(activity_id,user_id,registered_at,confirmed_at,credited_minutes) VALUES(?,?,?,?,45)',
+    ).run(Number(row.lastInsertRowid), 'staff001', start, start + 3600000)
+  }
+  const boundaryReport = personalAnnual(db, 'staff001', 2025)
+  assert.equal(boundaryReport.records.length, 1)
+  assert.equal(boundaryReport.totalMinutes, 45)
+  assert.equal(boundaryReport.months[0].minutes, 45)
 })
 after(() => {
   server.close()

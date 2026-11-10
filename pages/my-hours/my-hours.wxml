@@ -1,0 +1,72 @@
+<view class="page-shell">
+  <navigation-bar title="我的年度学时" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <view class="hours-toolbar">
+        <picker
+          class="hours-year"
+          mode="selector"
+          range="{{years}}"
+          value="{{yearIndex}}"
+          bindchange="changeYear"
+          disabled="{{loading || exporting}}"
+        >
+          <view class="muted">统计年度</view>
+          <view class="heading">{{year}} 年 ⌄</view>
+        </picker>
+        <button
+          class="button-mini export-button"
+          size="mini"
+          bindtap="exportData"
+          loading="{{exporting}}"
+          disabled="{{loading || exporting || !report}}"
+        >
+          导出 Excel
+        </button>
+      </view>
+      <view class="muted" wx:if="{{loading}}">正在加载年度学时...</view>
+      <block wx:if="{{report}}">
+        <view class="stat-grid">
+          <view class="stat-card">
+            <view class="muted">认定学时（分钟）</view>
+            <view class="stat-number">{{report.totalMinutes}}</view>
+          </view>
+          <view class="stat-card">
+            <view class="muted">审核通过活动</view>
+            <view class="stat-number">{{report.approvedCount}}</view>
+          </view>
+          <view class="stat-card">
+            <view class="muted">未审核（含未提交）</view>
+            <view class="stat-number">{{report.pendingCount}}</view>
+          </view>
+          <view class="stat-card">
+            <view class="muted">报名活动（含取消）</view>
+            <view class="stat-number">{{report.activityCount}}</view>
+          </view>
+        </view>
+        <view class="card">
+          <view class="title">月度认定学时</view>
+          <view class="muted">按活动开始月份统计，单位：分钟</view>
+          <view class="month-row" wx:for="{{months}}" wx:key="month">
+            <text class="month-label">{{item.month}}月</text>
+            <view class="month-track">
+              <view class="month-fill" style="width: {{item.width}}%;"></view>
+            </view>
+            <text class="month-value">{{item.minutes}}</text>
+          </view>
+        </view>
+        <view class="section-title">年度活动明细</view>
+        <view class="muted">仅已审核通过、未取消的活动计入认定学时。</view>
+        <view class="card" wx:for="{{records}}" wx:key="id">
+          <view class="title">{{item.title}}</view>
+          <view class="muted">{{item.startsText}} · {{item.reviewLabel}}</view>
+          <view class="line">
+            认定 {{item.recognizedMinutes}} 分钟 / 活动 {{item.creditMinutes}} 分钟
+          </view>
+          <view class="muted" wx:if="{{item.reviewNote}}">审核意见：{{item.reviewNote}}</view>
+        </view>
+        <view class="empty" wx:if="{{!records.length}}">该年度暂无活动记录</view>
+      </block>
+    </view>
+  </scroll-view>
+</view>

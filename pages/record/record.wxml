@@ -1,16 +1,90 @@
 <view class="page-shell">
-  <navigation-bar title="我的报名" back="{{false}}"></navigation-bar>
+  <navigation-bar title="我的培训记录" back="{{false}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
-      <view class="card" wx:for="{{records}}" wx:key="id" data-id="{{item.id}}" bindtap="open">
-        <view class="title">{{item.title}}</view>
-        <view class="muted">{{item.startsText}} · {{item.locationText}}</view>
-        <view class="line">
-          {{item.status === 'cancelled' ? '活动已取消' : item.confirmedAt ? '已确认参加' :
-          '已报名，待确认参加'}}
+      <view class="record-filters">
+        <view
+          class="filter {{filter === 'all' ? 'active' : ''}}"
+          data-filter="all"
+          bindtap="changeFilter"
+        >
+          全部
+        </view>
+        <view
+          class="filter {{filter === 'pending' ? 'active' : ''}}"
+          data-filter="pending"
+          bindtap="changeFilter"
+        >
+          未审核
+        </view>
+        <view
+          class="filter {{filter === 'reviewed' ? 'active' : ''}}"
+          data-filter="reviewed"
+          bindtap="changeFilter"
+        >
+          已审核
+        </view>
+        <view
+          class="filter {{filter === 'cancelled' ? 'active' : ''}}"
+          data-filter="cancelled"
+          bindtap="changeFilter"
+        >
+          已取消
         </view>
       </view>
-      <view class="muted" wx:if="{{!records.length}}">暂无报名记录</view>
+      <view class="muted">报名、培训经历与审核结果在此统一查看。</view>
+      <view class="card" wx:for="{{records}}" wx:key="id">
+        <view class="record-header">
+          <view class="title">{{item.title}}</view>
+          <text class="review-state {{item.reviewStatus}}">{{item.reviewLabel}}</text>
+        </view>
+        <view class="muted">{{item.startsText}} · {{item.locationText}}</view>
+        <view class="line">
+          认定学时 {{item.recognizedMinutes}} 分钟 · 活动学时 {{item.creditMinutes}} 分钟
+        </view>
+        <block wx:if="{{item.experienceId}}">
+          <view class="line">培训经历：{{item.experience}}</view>
+          <view class="muted">经历审核：{{item.experienceLabel}}</view>
+          <view class="muted" wx:if="{{item.reviewNote}}">审核意见：{{item.reviewNote}}</view>
+        </block>
+        <view class="actions">
+          <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="open">
+            活动详情
+          </button>
+          <button
+            class="button-mini primary"
+            size="mini"
+            wx:if="{{item.canSubmit && selectedId !== item.id}}"
+            data-id="{{item.id}}"
+            bindtap="editExperience"
+          >
+            {{item.reviewStatus === 'rejected' ? '重新提交经历' : '提交培训经历'}}
+          </button>
+        </view>
+        <view wx:if="{{selectedId === item.id}}">
+          <textarea
+            placeholder="填写本次活动的培训经历"
+            value="{{description}}"
+            bindinput="input"
+            maxlength="2000"
+          ></textarea>
+          <view class="actions">
+            <button
+              class="button-mini primary"
+              size="mini"
+              bindtap="submit"
+              loading="{{busy}}"
+              disabled="{{busy}}"
+            >
+              提交审核
+            </button>
+            <button class="button-mini" size="mini" bindtap="cancel" disabled="{{busy}}">
+              取消
+            </button>
+          </view>
+        </view>
+      </view>
+      <view class="empty" wx:if="{{!records.length}}">暂无对应的培训记录</view>
     </view>
   </scroll-view>
 </view>
