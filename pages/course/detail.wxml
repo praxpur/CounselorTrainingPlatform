@@ -23,7 +23,8 @@
         loading="{{busy}}"
         bindtap="register"
       >
-        {{activity.registered ? '已报名' : activity.canRegister ? '报名参加' : '报名已结束'}}
+        {{activity.registered ? '已报名' : activity.canRegister ? '报名参加' :
+        activity.registrationText}}
       </button>
     </view>
   </scroll-view>

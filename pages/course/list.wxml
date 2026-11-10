@@ -8,6 +8,7 @@
         <view class="muted">
           报名 {{item.registeredCount}} / {{item.capacityText}}　{{item.registered ? '已报名' : ''}}
         </view>
+        <view class="muted">{{item.activityState}} · {{item.registrationText}}</view>
       </view>
       <view class="muted" wx:if="{{!activities.length}}">暂无活动</view>
     </view>

@@ -211,17 +211,14 @@ const server = http.createServer(async (req, res) => {
         id = String(b.id || '').trim(),
         name = String(b.name || '').trim(),
         department = String(b.department || '').trim()
-      if (
-        !/^[a-zA-Z0-9_-]{1,40}$/.test(id) ||
-        !name ||
-        name.length > 50 ||
-        !department ||
-        department.length > 100
-      )
-        fail(400, '请填写测试工号、姓名和学院')
+      if (!/^[a-zA-Z0-9_-]{1,40}$/.test(id) || !name || name.length > 50 || department.length > 100)
+        fail(400, '请填写有效的测试工号和姓名')
       const role = id === process.env.DEV_ADMIN_ID ? 'admin' : 'counselor'
       const existing = get('SELECT * FROM users WHERE id=?', id)
       if (existing && !existing.enabled) fail(403, '该用户已停用')
+      if ((!existing || !existing.department) && !department) {
+        return send(res, 422, { error: '首次登录，请补充学院或部门', code: 'DEPARTMENT_REQUIRED' })
+      }
       if (!existing)
         run(
           'INSERT INTO users(id,name,department,role) VALUES(?,?,?,?)',
@@ -230,6 +227,7 @@ const server = http.createServer(async (req, res) => {
           department,
           role,
         )
+      else if (!existing.department) run('UPDATE users SET department=? WHERE id=?', department, id)
       const token = crypto.randomBytes(32).toString('hex')
       run('INSERT INTO sessions VALUES(?,?,?)', hash(token), id, Date.now() + 8 * 3600000)
       const user = get('SELECT id,name,department,role FROM users WHERE id=?', id)
@@ -406,7 +404,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (path === '/api/activities' && method === 'GET') {
       const ids = all(
-        "SELECT a.id FROM activities a WHERE a.status='published' AND a.starts_at>? AND (a.capacity=0 OR (SELECT COUNT(*) FROM registrations r WHERE r.activity_id=a.id)<a.capacity) ORDER BY a.starts_at ASC LIMIT 500",
+        "SELECT a.id FROM activities a WHERE a.status='published' ORDER BY CASE WHEN a.ends_at>? THEN 0 ELSE 1 END, a.starts_at DESC LIMIT 500",
         Date.now(),
       )
       return send(

@@ -20,7 +20,13 @@
         <view class="section-title">管理与统计</view>
         <view class="admin-menu">
           <navigator class="admin-item" url="/pages/admin/admin">
-            <view class="admin-icon blue"><image class="admin-icon-image" src="/assets/admin/activities.png" mode="aspectFit"></image></view>
+            <view class="admin-icon blue">
+              <image
+                class="admin-icon-image"
+                src="/assets/admin/activities.png"
+                mode="aspectFit"
+              ></image>
+            </view>
             <view class="admin-content">
               <view class="title">活动管理</view>
               <view class="muted">发布、编辑活动，查看报名名单</view>
@@ -28,7 +34,13 @@
             <view class="arrow">›</view>
           </navigator>
           <navigator class="admin-item" url="/pages/people/people">
-            <view class="admin-icon green"><image class="admin-icon-image" src="/assets/admin/participation.png" mode="aspectFit"></image></view>
+            <view class="admin-icon green">
+              <image
+                class="admin-icon-image"
+                src="/assets/admin/participation.png"
+                mode="aspectFit"
+              ></image>
+            </view>
             <view class="admin-content">
               <view class="title">人员报名情况</view>
               <view class="muted">按人员查看报名和参加记录</view>
@@ -36,7 +48,13 @@
             <view class="arrow">›</view>
           </navigator>
           <navigator class="admin-item" url="/pages/users/users">
-            <view class="admin-icon green"><image class="admin-icon-image" src="/assets/admin/users.png" mode="aspectFit"></image></view>
+            <view class="admin-icon green">
+              <image
+                class="admin-icon-image"
+                src="/assets/admin/users.png"
+                mode="aspectFit"
+              ></image>
+            </view>
             <view class="admin-content">
               <view class="title">用户名单管理</view>
               <view class="muted">新增、编辑和停用辅导员</view>
@@ -44,7 +62,13 @@
             <view class="arrow">›</view>
           </navigator>
           <navigator class="admin-item" url="/pages/ranking/ranking">
-            <view class="admin-icon orange"><image class="admin-icon-image" src="/assets/admin/ranking.png" mode="aspectFit"></image></view>
+            <view class="admin-icon orange">
+              <image
+                class="admin-icon-image"
+                src="/assets/admin/ranking.png"
+                mode="aspectFit"
+              ></image>
+            </view>
             <view class="admin-content">
               <view class="title">年度统计与排名</view>
               <view class="muted">查看年度参加次数和学时排名</view>
@@ -52,7 +76,13 @@
             <view class="arrow">›</view>
           </navigator>
           <navigator class="admin-item" url="/pages/reviews/reviews">
-            <view class="admin-icon purple"><image class="admin-icon-image" src="/assets/admin/reviews.png" mode="aspectFit"></image></view>
+            <view class="admin-icon purple">
+              <image
+                class="admin-icon-image"
+                src="/assets/admin/reviews.png"
+                mode="aspectFit"
+              ></image>
+            </view>
             <view class="admin-content">
               <view class="review-heading">
                 <view class="title">培训经历审核</view>
@@ -86,6 +116,7 @@
           <view class="title">{{item.title}}</view>
           <view class="muted">{{item.startsText}} · {{item.locationText}}</view>
           <view class="muted">已报名 {{item.registeredCount}} / {{item.capacityText}}</view>
+          <view class="muted">{{item.activityState}} · {{item.registrationText}}</view>
         </view>
         <view class="muted" wx:if="{{!activities.length}}">暂无活动</view>
       </block>

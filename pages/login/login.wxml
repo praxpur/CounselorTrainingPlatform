@@ -4,7 +4,11 @@
     <view class="container">
       <school-brand></school-brand>
       <view class="campus-hero login-campus">
-        <image class="campus-photo" src="/assets/brand/shenghua-square.jpg" mode="aspectFill"></image>
+        <image
+          class="campus-photo"
+          src="/assets/brand/shenghua-square.jpg"
+          mode="aspectFill"
+        ></image>
         <view class="campus-caption">济南大学 · 升华广场</view>
       </view>
       <view class="card login-panel">
@@ -14,8 +18,19 @@
         <input placeholder="请输入测试工号" data-field="id" bindinput="input" />
         <view class="field-label">姓名</view>
         <input placeholder="请输入姓名" data-field="name" bindinput="input" />
-        <view class="field-label">学院 / 部门</view>
-        <input placeholder="请输入学院或部门" data-field="department" bindinput="input" />
+        <block wx:if="{{departmentRequired}}">
+          <view class="field-label">
+            <text class="required-mark">*</text>
+            学院 / 部门（首次填写）
+          </view>
+          <input
+            placeholder="首次登录请补充学院或部门"
+            value="{{department}}"
+            data-field="department"
+            bindinput="input"
+          />
+          <view class="muted">保存后，再次登录无需重复填写。</view>
+        </block>
         <button class="primary" loading="{{loading}}" disabled="{{loading}}" bindtap="login">
           登录
         </button>

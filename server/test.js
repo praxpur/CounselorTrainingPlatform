@@ -29,6 +29,23 @@ test('活动管理、权限和并发报名', async () => {
     user = await login('user')
   assert.equal((await call('/api/admin/review-count', 'GET', null, user)).status, 403)
   assert.equal((await call('/api/admin/review-count', 'GET', null, admin)).body.pendingCount, 0)
+  const firstLogin = await call('/api/auth/dev', 'POST', { id: 'newTeacher', name: '新老师' })
+  assert.equal(firstLogin.status, 422)
+  assert.equal(firstLogin.body.code, 'DEPARTMENT_REQUIRED')
+  assert.equal(db.prepare('SELECT id FROM users WHERE id=?').get('newTeacher'), undefined)
+  assert.equal(
+    (
+      await call('/api/auth/dev', 'POST', {
+        id: 'newTeacher',
+        name: '新老师',
+        department: '首次填写学院',
+      })
+    ).status,
+    200,
+  )
+  const secondLogin = await call('/api/auth/dev', 'POST', { id: 'newTeacher', name: '新老师' })
+  assert.equal(secondLogin.status, 200)
+  assert.equal(secondLogin.body.user.department, '首次填写学院')
   assert.equal((await call('/api/admin/exports/people', 'GET', null, user)).status, 403)
   assert.equal((await call('/api/admin/activities', 'GET', null, user)).status, 403)
   const entry = { id: 'staff001', name: '测试老师', department: '测试学院' }
@@ -90,6 +107,9 @@ test('活动管理、权限和并发报名', async () => {
   )
   assert.equal(registrations.filter((x) => x.status === 200).length, 10)
   assert.equal(registrations.filter((x) => x.status === 409).length, 40)
+  assert.ok(
+    (await call('/api/activities', 'GET', null, user)).body.some((activity) => activity.id === id),
+  )
   const attendees = await call('/api/admin/activities/' + id + '/attendees', 'GET', null, admin)
   assert.equal(attendees.body.length, 10)
   const who = attendees.body[0].id
@@ -111,6 +131,9 @@ test('活动管理、权限和并发报名', async () => {
   )
   const past = Date.now() - 60000
   db.prepare('UPDATE activities SET starts_at=? WHERE id=?').run(past, id)
+  assert.ok(
+    (await call('/api/activities', 'GET', null, user)).body.some((activity) => activity.id === id),
+  )
   const pastYear = new Date(past + 8 * 3600000).getUTCFullYear()
   const submitted = await call(
     '/api/experiences',
@@ -228,6 +251,10 @@ test('活动管理、权限和并发报名', async () => {
     409,
   )
   assert.equal((await call('/api/admin/activities/' + id, 'DELETE', null, admin)).status, 200)
+  assert.equal(
+    (await call('/api/activities', 'GET', null, user)).body.some((activity) => activity.id === id),
+    false,
+  )
   rank = await call('/api/admin/ranking?year=' + pastYear, 'GET', null, admin)
   assert.equal(rank.body.rows.find((x) => x.id === who).totalMinutes, 0)
   assert.equal((await call('/api/activities/' + id + '/register', 'POST', {}, user)).status, 409)

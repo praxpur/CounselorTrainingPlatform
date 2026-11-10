@@ -12,7 +12,10 @@ function request(path, method, data) {
         if (res.statusCode >= 200 && res.statusCode < 300) resolve(res.data)
         else {
           if (res.statusCode === 401) wx.removeStorageSync(TOKEN_KEY)
-          reject(new Error((res.data && res.data.error) || '请求失败'))
+          const error = new Error((res.data && res.data.error) || '请求失败')
+          error.code = res.data && res.data.code
+          error.statusCode = res.statusCode
+          reject(error)
         }
       },
       fail() {
@@ -48,6 +51,19 @@ function time(value) {
   )
 }
 function format(a) {
+  const now = Date.now()
+  const registrationText =
+    a.status === 'cancelled'
+      ? '活动已取消'
+      : a.registered
+        ? '已报名'
+        : a.endsAt <= now
+          ? '活动已结束'
+          : a.startsAt <= now
+            ? '报名已截止'
+            : a.capacity !== null && a.registeredCount >= a.capacity
+              ? '名额已满'
+              : '报名开放中'
   return {
     ...a,
     startsText: time(a.startsAt),
@@ -55,6 +71,8 @@ function format(a) {
     capacityText: a.capacity === null ? '不限人数' : String(a.capacity),
     locationText: a.location || '地点待定',
     confirmedText: a.confirmedAt ? time(a.confirmedAt) : '',
+    registrationText,
+    activityState: a.endsAt <= now ? '已结束' : a.startsAt <= now ? '进行中' : '未开始',
     canRegister:
       a.status === 'published' &&
       !a.registered &&
