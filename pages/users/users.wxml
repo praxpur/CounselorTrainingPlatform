@@ -28,7 +28,7 @@
         </button>
         <button bindtap="reset">取消</button>
       </view>
-  
+
       <view class="search">
         <input
           placeholder="搜索工号、姓名或部门"
