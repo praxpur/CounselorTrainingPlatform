@@ -232,3 +232,14 @@ picker {
   line-height: 38rpx;
   text-align: center;
 }
+
+.required-mark {
+  color: #d93025;
+  margin-right: 8rpx;
+  font-weight: 600;
+}
+.optional-hint {
+  color: #8a94a5;
+  font-size: 24rpx;
+  margin-left: 6rpx;
+}

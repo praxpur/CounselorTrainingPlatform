@@ -10,9 +10,9 @@
       <view class="empty" wx:if="{{!activities.length}}">暂无活动，点击右上方发布活动</view>
       <view class="card" wx:for="{{activities}}" wx:key="id">
         <view class="title">{{item.title}}</view>
-        <view class="muted">{{item.startsText}} · {{item.location}}</view>
+        <view class="muted">{{item.startsText}} · {{item.locationText}}</view>
         <view class="line">
-          报名 {{item.registeredCount}} / {{item.capacity}} {{item.status === 'cancelled' ?
+          报名 {{item.registeredCount}} / {{item.capacityText}} {{item.status === 'cancelled' ?
           '（已取消）' : ''}}
         </view>
         <view class="actions">

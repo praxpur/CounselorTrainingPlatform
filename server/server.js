@@ -114,25 +114,34 @@ function activityInput(input) {
     location = String(input.location || '').trim()
   const starts = Date.parse(input.startsAt),
     ends = Date.parse(input.endsAt),
-    capacity = Number(input.capacity),
-    minutes = Number(input.creditMinutes ?? 0)
+    capacity =
+      input.capacity === undefined || input.capacity === null || input.capacity === ''
+        ? 0
+        : Number(input.capacity),
+    minutes = Number(input.creditMinutes)
   if (
     !title ||
     title.length > 100 ||
     description.length > 2000 ||
-    !location ||
     location.length > 200 ||
     !Number.isFinite(starts) ||
     !Number.isFinite(ends) ||
     ends <= starts ||
     !Number.isInteger(capacity) ||
-    capacity < 1 ||
+    capacity < 0 ||
+    (capacity === 0 &&
+      input.capacity !== undefined &&
+      input.capacity !== null &&
+      input.capacity !== '') ||
     capacity > 100000 ||
     !Number.isInteger(minutes) ||
+    input.creditMinutes === undefined ||
+    input.creditMinutes === null ||
+    input.creditMinutes === '' ||
     minutes < 0 ||
     minutes > 60000
   )
-    fail(400, '请填写有效的标题、地点、时间、人数和学时')
+    fail(400, '请填写活动名称、有效起止时间和学时；人数上限如填写须为正整数')
   return [title, description, location, starts, ends, capacity, minutes]
 }
 function dto(a) {
@@ -143,7 +152,7 @@ function dto(a) {
     location: a.location,
     startsAt: a.starts_at,
     endsAt: a.ends_at,
-    capacity: a.capacity,
+    capacity: a.capacity === 0 ? null : a.capacity,
     creditMinutes: a.credit_minutes,
     status: a.status,
     registeredCount: a.registered_count,
@@ -397,7 +406,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (path === '/api/activities' && method === 'GET') {
       const ids = all(
-        "SELECT a.id FROM activities a WHERE a.status='published' AND a.starts_at>? AND (SELECT COUNT(*) FROM registrations r WHERE r.activity_id=a.id)<a.capacity ORDER BY a.starts_at ASC LIMIT 500",
+        "SELECT a.id FROM activities a WHERE a.status='published' AND a.starts_at>? AND (a.capacity=0 OR (SELECT COUNT(*) FROM registrations r WHERE r.activity_id=a.id)<a.capacity) ORDER BY a.starts_at ASC LIMIT 500",
         Date.now(),
       )
       return send(
@@ -561,7 +570,7 @@ const server = http.createServer(async (req, res) => {
         if (a.status !== 'published' || a.starts_at <= Date.now())
           fail(409, '活动已取消或报名已截止')
         if (a.registered) fail(409, '您已报名')
-        if (a.registered_count >= a.capacity) fail(409, '报名人数已满')
+        if (a.capacity > 0 && a.registered_count >= a.capacity) fail(409, '报名人数已满')
         run(
           'INSERT INTO registrations(activity_id,user_id,registered_at) VALUES(?,?,?)',
           id,
@@ -582,7 +591,7 @@ const server = http.createServer(async (req, res) => {
         a = activity(id, u),
         v = activityInput(await body(req))
       if (a.status !== 'published') fail(409, '已取消的活动不能修改')
-      if (v[5] < a.registered_count) fail(409, '人数上限不能少于已报名人数')
+      if (v[5] > 0 && v[5] < a.registered_count) fail(409, '人数上限不能少于已报名人数')
       if (
         get(
           'SELECT 1 AS found FROM registrations WHERE activity_id=? AND confirmed_at IS NOT NULL LIMIT 1',

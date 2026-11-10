@@ -1,15 +1,31 @@
 const api = require('../../utils/store')
+const currentYear = new Date().getFullYear()
+const years = Array.from({ length: 101 }, (_, index) => 2000 + index)
+
 Page({
-  data: { year: new Date().getFullYear(), rows: [] },
+  data: {
+    year: currentYear,
+    years,
+    yearIndex: currentYear - 2000,
+    loadedYear: null,
+    rows: [],
+    loading: false,
+    exporting: false,
+  },
   onLoad() {
     this.load()
   },
+  changeYear(event) {
+    const index = Number(event.detail.value)
+    this.setData({ year: years[index], yearIndex: index, loadedYear: null, rows: [] })
+    this.load()
+  },
   async exportData() {
-    if (this.data.exporting) return
+    if (this.data.exporting || this.data.loading || this.data.loadedYear !== this.data.year) return
     this.setData({ exporting: true })
     try {
       await api.exportExcel(
-        '/api/admin/exports/ranking?year=' + encodeURIComponent(this.data.year),
+        '/api/admin/exports/ranking?year=' + this.data.year,
         this.data.year + '-年度学时排名.xlsx',
       )
     } catch (error) {
@@ -18,16 +34,19 @@ Page({
       this.setData({ exporting: false })
     }
   },
-  input(e) {
-    this.setData({ year: e.detail.value })
-  },
   async load() {
     if (!api.guard()) return
+    const requestId = (this.requestId || 0) + 1
+    this.requestId = requestId
+    this.setData({ loading: true })
     try {
-      const r = await api.request('/api/admin/ranking?year=' + encodeURIComponent(this.data.year))
-      this.setData({ year: r.year, rows: r.rows })
-    } catch (e) {
-      api.error(e)
+      const report = await api.request('/api/admin/ranking?year=' + this.data.year)
+      if (this.requestId !== requestId) return
+      this.setData({ loadedYear: report.year, rows: report.rows })
+    } catch (error) {
+      if (this.requestId === requestId) api.error(error)
+    } finally {
+      if (this.requestId === requestId) this.setData({ loading: false })
     }
   },
 })

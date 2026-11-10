@@ -4,7 +4,7 @@
     <view class="container">
       <view class="card" wx:for="{{records}}" wx:key="id" data-id="{{item.id}}" bindtap="open">
         <view class="title">{{item.title}}</view>
-        <view class="muted">{{item.startsText}} · {{item.location}}</view>
+        <view class="muted">{{item.startsText}} · {{item.locationText}}</view>
         <view class="line">
           {{item.status === 'cancelled' ? '活动已取消' : item.confirmedAt ? '已确认参加' :
           '已报名，待确认参加'}}

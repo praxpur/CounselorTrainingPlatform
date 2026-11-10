@@ -84,8 +84,8 @@
         </view>
         <view class="card" wx:for="{{activities}}" wx:key="id" data-id="{{item.id}}" bindtap="open">
           <view class="title">{{item.title}}</view>
-          <view class="muted">{{item.startsText}} · {{item.location}}</view>
-          <view class="muted">已报名 {{item.registeredCount}} / {{item.capacity}}</view>
+          <view class="muted">{{item.startsText}} · {{item.locationText}}</view>
+          <view class="muted">已报名 {{item.registeredCount}} / {{item.capacityText}}</view>
         </view>
         <view class="muted" wx:if="{{!activities.length}}">暂无活动</view>
       </block>

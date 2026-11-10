@@ -235,6 +235,65 @@ test('活动管理、权限和并发报名', async () => {
     (await call('/api/admin/activities/' + id + '/attendees', 'GET', null, admin)).body.length,
     10,
   )
+  const optionalEvent = {
+    title: '可选项留空的活动',
+    startsAt: event.startsAt,
+    endsAt: event.endsAt,
+    creditMinutes: 30,
+  }
+  const optionalResult = await call('/api/admin/activities', 'POST', optionalEvent, admin)
+  assert.equal(optionalResult.status, 201)
+  assert.equal(optionalResult.body.capacity, null)
+  assert.equal(optionalResult.body.location, '')
+  assert.equal(optionalResult.body.description, '')
+  const optionalId = optionalResult.body.id
+  assert.equal(
+    (await call('/api/activities/' + optionalId + '/register', 'POST', {}, user)).status,
+    200,
+  )
+  assert.equal(
+    (await call('/api/activities/' + optionalId + '/register', 'POST', {}, tokens[0])).status,
+    200,
+  )
+  assert.ok(
+    (await call('/api/activities', 'GET', null, user)).body.some(
+      (activity) => activity.id === optionalId,
+    ),
+  )
+  assert.equal(
+    (
+      await call(
+        '/api/admin/activities/' + optionalId,
+        'PUT',
+        { ...optionalEvent, capacity: null },
+        admin,
+      )
+    ).status,
+    200,
+  )
+  assert.equal(
+    (
+      await call(
+        '/api/admin/activities/' + optionalId,
+        'PUT',
+        { ...optionalEvent, capacity: 1 },
+        admin,
+      )
+    ).status,
+    409,
+  )
+  for (const invalid of [
+    { capacity: 0 },
+    { capacity: -1 },
+    { capacity: 1.5 },
+    { title: '' },
+    { creditMinutes: null },
+  ]) {
+    assert.equal(
+      (await call('/api/admin/activities', 'POST', { ...optionalEvent, ...invalid }, admin)).status,
+      400,
+    )
+  }
 })
 after(() => {
   server.close()

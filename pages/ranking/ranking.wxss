@@ -1,1 +1,28 @@
-/* 共用全局样式 */
+.ranking-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20rpx;
+  margin-bottom: 24rpx;
+}
+.year-picker {
+  background: #eaf0fa;
+  padding: 20rpx 28rpx;
+  border-radius: 16rpx;
+  min-width: 270rpx;
+}
+.year-label {
+  color: #64748b;
+  font-size: 24rpx;
+}
+.year-value {
+  color: #25489c;
+  font-size: 48rpx;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.year-unit,
+.year-arrow {
+  font-size: 28rpx;
+  margin-left: 12rpx;
+}

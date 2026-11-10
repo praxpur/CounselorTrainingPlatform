@@ -44,7 +44,7 @@ Page({
           startTime,
           endDate,
           endTime,
-          capacity: String(activity.capacity),
+          capacity: activity.capacity === null ? '' : String(activity.capacity),
           creditMinutes: String(activity.creditMinutes),
         },
       })
@@ -64,15 +64,13 @@ Page({
     const form = this.data.form
     if (
       !form.title.trim() ||
-      !form.location.trim() ||
       !form.startDate ||
       !form.startTime ||
       !form.endDate ||
       !form.endTime ||
-      form.creditMinutes === '' ||
-      form.capacity === ''
+      form.creditMinutes === ''
     ) {
-      wx.showToast({ title: '请完整填写活动信息', icon: 'none' })
+      wx.showToast({ title: '请填写标星号的必填项', icon: 'none' })
       return
     }
     this.setData({ busy: true })
@@ -86,7 +84,7 @@ Page({
           location: form.location,
           startsAt: form.startDate + 'T' + form.startTime + ':00+08:00',
           endsAt: form.endDate + 'T' + form.endTime + ':00+08:00',
-          capacity: Number(form.capacity),
+          capacity: form.capacity.trim() === '' ? null : Number(form.capacity),
           creditMinutes: Number(form.creditMinutes),
         },
       )

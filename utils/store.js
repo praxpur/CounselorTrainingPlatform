@@ -52,12 +52,14 @@ function format(a) {
     ...a,
     startsText: time(a.startsAt),
     endsText: time(a.endsAt),
+    capacityText: a.capacity === null ? '不限人数' : String(a.capacity),
+    locationText: a.location || '地点待定',
     confirmedText: a.confirmedAt ? time(a.confirmedAt) : '',
     canRegister:
       a.status === 'published' &&
       !a.registered &&
       a.startsAt > Date.now() &&
-      a.registeredCount < a.capacity,
+      (a.capacity === null || a.registeredCount < a.capacity),
   }
 }
 // 下载携带登录凭证的 Excel，并通过微信文档预览菜单保存或分享。

@@ -3,20 +3,40 @@
   <scroll-view scroll-y class="screen">
     <view class="container">
       <view class="card">
-        <input placeholder="活动名称" value="{{form.title}}" data-field="title" bindinput="input" />
+        <view class="field-label">
+          <text class="required-mark">*</text>
+          活动名称
+        </view>
         <input
-          placeholder="活动地点"
+          placeholder="请输入活动名称"
+          value="{{form.title}}"
+          data-field="title"
+          bindinput="input"
+        />
+        <view class="field-label">
+          活动地点
+          <text class="optional-hint">（可选）</text>
+        </view>
+        <input
+          placeholder="选填，留空显示地点待定"
           value="{{form.location}}"
           data-field="location"
           bindinput="input"
         />
+        <view class="field-label">
+          活动介绍
+          <text class="optional-hint">（可选）</text>
+        </view>
         <textarea
-          placeholder="活动介绍"
+          placeholder="选填，补充活动内容或注意事项"
           value="{{form.description}}"
           data-field="description"
           bindinput="input"
         />
-        <view class="line">开始时间</view>
+        <view class="field-label">
+          <text class="required-mark">*</text>
+          开始时间
+        </view>
         <view class="row">
           <picker mode="date" value="{{form.startDate}}" data-field="startDate" bindchange="input">
             {{form.startDate || '选择日期'}}
@@ -25,7 +45,10 @@
             {{form.startTime || '选择时间'}}
           </picker>
         </view>
-        <view class="line">结束时间</view>
+        <view class="field-label">
+          <text class="required-mark">*</text>
+          结束时间
+        </view>
         <view class="row">
           <picker mode="date" value="{{form.endDate}}" data-field="endDate" bindchange="input">
             {{form.endDate || '选择日期'}}
@@ -34,16 +57,24 @@
             {{form.endTime || '选择时间'}}
           </picker>
         </view>
+        <view class="field-label">
+          <text class="required-mark">*</text>
+          活动学时（分钟）
+        </view>
         <input
           type="number"
-          placeholder="活动学时（分钟）"
+          placeholder="请输入统一认定的学时分钟数"
           value="{{form.creditMinutes}}"
           data-field="creditMinutes"
           bindinput="input"
         />
+        <view class="field-label">
+          报名人数上限
+          <text class="optional-hint">（可选）</text>
+        </view>
         <input
           type="number"
-          placeholder="报名人数上限"
+          placeholder="选填，留空表示不限人数"
           value="{{form.capacity}}"
           data-field="capacity"
           bindinput="input"
