@@ -92,14 +92,18 @@ Component({
         displayStyle,
       })
     },
-    back() {
+    onBack() {
       const data = this.data
       if (data.delta) {
         wx.navigateBack({
           delta: data.delta,
+          fail: () => wx.switchTab({ url: '/pages/index/index' }),
         })
       }
       this.triggerEvent('back', { delta: data.delta }, {})
+    },
+    onHome() {
+      wx.switchTab({ url: '/pages/index/index' })
     },
   },
 })

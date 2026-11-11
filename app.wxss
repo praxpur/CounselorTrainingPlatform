@@ -119,6 +119,16 @@ button.primary {
   background: #25489c;
   color: #fff;
 }
+button[disabled] {
+  opacity: 0.55;
+  cursor: default;
+}
+.page-toolbar > .muted {
+  margin-top: 0;
+}
+.page-toolbar .button-mini {
+  margin: 0;
+}
 
 .button-mini {
   display: inline-block;

@@ -1,0 +1,5 @@
+<view wx:if="{{loading}}" class="status-loading">正在加载，请稍候…</view>
+<view wx:elif="{{errorMessage}}" class="status-error">
+  <view>{{errorMessage}}</view>
+  <button class="button-mini" size="mini" bindtap="retry">重新加载</button>
+</view>

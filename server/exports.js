@@ -13,10 +13,24 @@ function addSheet(workbook, name, columns, rows) {
   })
   sheet.eachRow((row, index) => {
     if (index === 1) return
+    let lines = 1
     row.eachCell((cell) => {
       cell.font = { name: 'Noto Sans CJK SC', size: 11 }
       cell.alignment = { vertical: 'top', wrapText: true }
+      if (typeof cell.value === 'string') {
+        const width = sheet.getColumn(cell.col).width || 20
+        const textWidth = [...cell.value].reduce(
+          (sum, char) => sum + (char.charCodeAt(0) > 255 ? 2 : 1),
+          0,
+        )
+        lines = Math.max(
+          lines,
+          Math.ceil(textWidth / Math.max(1, width - 2)),
+          cell.value.split('\n').length,
+        )
+      }
     })
+    row.height = Math.min(400, Math.max(24, lines * 16))
   })
   return sheet
 }

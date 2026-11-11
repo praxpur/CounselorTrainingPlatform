@@ -2,8 +2,13 @@
   <navigation-bar title="我的" back="{{false}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="onShow"
+      ></status-panel>
       <school-brand></school-brand>
-      <view class="card">
+      <view class="card" wx:if="{{!loading && !errorMessage && user.name}}">
         <view class="heading">{{user.name}}</view>
         <view class="line">{{user.department}}</view>
         <view class="muted">辅导员</view>

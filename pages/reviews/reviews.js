@@ -1,25 +1,35 @@
 const api = require('../../utils/store')
 Page({
-  data: { records: [], allRecords: [], notes: {}, busy: false, pendingCount: 0, showAll: false },
+  data: {
+    loading: false,
+    errorMessage: '',
+    records: [],
+    allRecords: [],
+    notes: {},
+    busy: false,
+    pendingCount: 0,
+    showAll: false,
+  },
   onShow() {
     this.load()
   },
   async load() {
     if (!api.guard()) return
+    this.setData({ loading: true, errorMessage: '', records: [], allRecords: [] })
     try {
-      const [records, count] = await Promise.all([
-        api.request('/api/admin/experiences'),
-        api.request('/api/admin/review-count'),
-      ])
+      const records = await api.request('/api/admin/experiences')
       this.setData({
         allRecords: records,
-        pendingCount: count.pendingCount,
+        pendingCount: records.filter((record) => record.status === 'pending').length,
         records: this.data.showAll
           ? records
           : records.filter((record) => record.status === 'pending'),
       })
     } catch (e) {
+      this.setData({ errorMessage: e.message })
       api.error(e)
+    } finally {
+      this.setData({ loading: false })
     }
   },
   toggleRecords() {

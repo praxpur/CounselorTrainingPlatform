@@ -1,16 +1,19 @@
 const api = require('../../utils/store')
 
 function splitDateTime(timestamp) {
-  const date = new Date(timestamp)
+  const date = new Date(timestamp + 8 * 3600000)
   const pad = (value) => String(value).padStart(2, '0')
   return [
-    date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()),
-    pad(date.getHours()) + ':' + pad(date.getMinutes()),
+    date.getUTCFullYear() + '-' + pad(date.getUTCMonth() + 1) + '-' + pad(date.getUTCDate()),
+    pad(date.getUTCHours()) + ':' + pad(date.getUTCMinutes()),
   ]
 }
 
 Page({
   data: {
+    loading: true,
+    ready: false,
+    errorMessage: '',
     editing: null,
     busy: false,
     form: {
@@ -25,17 +28,26 @@ Page({
       creditMinutes: '',
     },
   },
-  async onLoad(options) {
+  onLoad(options) {
+    this.options = options || {}
+    this.load()
+  },
+  async load() {
     if (!api.guard()) return
+    this.setData({ loading: true, ready: false, errorMessage: '' })
     try {
       const user = await api.request('/api/me')
       if (user.role !== 'admin') throw new Error('无管理员权限')
-      if (!options.id) return
-      const activity = await api.request('/api/activities/' + options.id)
+      if (!this.options.id) {
+        this.setData({ ready: true })
+        return
+      }
+      const activity = await api.request('/api/activities/' + this.options.id)
       const [startDate, startTime] = splitDateTime(activity.startsAt)
       const [endDate, endTime] = splitDateTime(activity.endsAt)
       this.setData({
         editing: activity.id,
+        ready: true,
         form: {
           title: activity.title,
           description: activity.description,
@@ -49,8 +61,10 @@ Page({
         },
       })
     } catch (error) {
+      this.setData({ errorMessage: error.message })
       api.error(error)
-      wx.navigateBack()
+    } finally {
+      this.setData({ loading: false })
     }
   },
   input(event) {
@@ -60,7 +74,7 @@ Page({
     if (!this.data.busy) wx.navigateBack()
   },
   async save() {
-    if (this.data.busy) return
+    if (this.data.busy || !this.data.ready || this.saved) return
     const form = this.data.form
     if (
       !form.title.trim() ||
@@ -71,6 +85,29 @@ Page({
       form.creditMinutes === ''
     ) {
       wx.showToast({ title: '请填写标星号的必填项', icon: 'none' })
+      return
+    }
+    const start = Date.parse(form.startDate + 'T' + form.startTime + ':00+08:00')
+    const end = Date.parse(form.endDate + 'T' + form.endTime + ':00+08:00')
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) {
+      wx.showToast({ title: '结束时间须晚于开始时间', icon: 'none' })
+      return
+    }
+    if (
+      !Number.isInteger(Number(form.creditMinutes)) ||
+      Number(form.creditMinutes) < 0 ||
+      Number(form.creditMinutes) > 60000
+    ) {
+      wx.showToast({ title: '学时须为 0—60000 的整数分钟', icon: 'none' })
+      return
+    }
+    if (
+      form.capacity.trim() &&
+      (!Number.isInteger(Number(form.capacity)) ||
+        Number(form.capacity) < 1 ||
+        Number(form.capacity) > 100000)
+    ) {
+      wx.showToast({ title: '人数上限须为 1—100000 的整数', icon: 'none' })
       return
     }
     this.setData({ busy: true })
@@ -88,8 +125,10 @@ Page({
           creditMinutes: Number(form.creditMinutes),
         },
       )
+      this.saved = true
       wx.navigateBack({
         success: () => wx.showToast({ title: this.data.editing ? '修改成功' : '发布成功' }),
+        fail: () => wx.redirectTo({ url: '/pages/admin/admin' }),
       })
     } catch (error) {
       api.error(error)

@@ -7,11 +7,16 @@ function request(path, method, data) {
     wx.request({
       url: API_BASE + path,
       method: method || 'GET',
+      timeout: 15000,
       data,
       header: { Authorization: 'Bearer ' + (wx.getStorageSync(TOKEN_KEY) || '') },
       success(res) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
-          ensureFontForText(res.data, API_BASE)
+          try {
+            ensureFontForText(res.data, API_BASE)
+          } catch (error) {
+            console.warn('字体加载暂不可用', error)
+          }
           resolve(res.data)
         } else {
           if (res.statusCode === 401) wx.removeStorageSync(TOKEN_KEY)
@@ -21,8 +26,14 @@ function request(path, method, data) {
           reject(error)
         }
       },
-      fail() {
-        reject(new Error('无法连接服务器，请检查网络和服务器配置'))
+      fail(result) {
+        reject(
+          new Error(
+            (result.errMsg || '').includes('timeout')
+              ? '请求超时，请稍后重试'
+              : '无法连接服务器，请检查网络和服务器配置',
+          ),
+        )
       },
     }),
   )
@@ -39,18 +50,19 @@ function error(e) {
   if (!wx.getStorageSync(TOKEN_KEY)) wx.reLaunch({ url: '/pages/login/login' })
 }
 function time(value) {
-  const d = new Date(value),
+  if (!Number.isFinite(value)) return ''
+  const d = new Date(value + 8 * 3600000),
     p = (n) => String(n).padStart(2, '0')
   return (
-    d.getFullYear() +
+    d.getUTCFullYear() +
     '-' +
-    p(d.getMonth() + 1) +
+    p(d.getUTCMonth() + 1) +
     '-' +
-    p(d.getDate()) +
+    p(d.getUTCDate()) +
     ' ' +
-    p(d.getHours()) +
+    p(d.getUTCHours()) +
     ':' +
-    p(d.getMinutes())
+    p(d.getUTCMinutes())
   )
 }
 function format(a) {
@@ -89,7 +101,7 @@ function exportExcel(path, filename) {
     wx.downloadFile({
       url: API_BASE + path,
       header: { Authorization: 'Bearer ' + (wx.getStorageSync(TOKEN_KEY) || '') },
-      filePath: wx.env.USER_DATA_PATH + '/' + filename,
+      timeout: 60000,
       success(result) {
         if (result.statusCode !== 200) {
           if (result.statusCode === 401) wx.removeStorageSync(TOKEN_KEY)
@@ -99,7 +111,7 @@ function exportExcel(path, filename) {
           return
         }
         wx.openDocument({
-          filePath: result.filePath,
+          filePath: result.tempFilePath || result.filePath,
           fileType: 'xlsx',
           showMenu: true,
           success: resolve,

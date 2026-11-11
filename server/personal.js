@@ -39,7 +39,9 @@ function personalRecords(db, userId) {
           cancelled: '活动已取消',
         }[reviewStatus],
         recognizedMinutes: reviewStatus === 'approved' ? record.creditedMinutes : 0,
-        canSubmit: reviewStatus === 'unsubmitted' || reviewStatus === 'rejected',
+        canSubmit:
+          (reviewStatus === 'unsubmitted' || reviewStatus === 'rejected') &&
+          record.startsAt <= Date.now(),
       }
     })
 }

@@ -1,12 +1,16 @@
 <view class="page-shell">
   <navigation-bar
-    title="{{user.role === 'admin' ? '管理工作台' : '辅导员培训平台'}}"
+    title="{{user && user.role === 'admin' ? '管理工作台' : '辅导员培训平台'}}"
     back="{{false}}"
   ></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
-      <view class="muted" wx:if="{{loading}}">正在加载...</view>
-      <block wx:elif="{{user && user.role === 'admin'}}">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="onShow"
+      ></status-panel>
+      <block wx:if="{{!loading && user && user.role === 'admin'}}">
         <school-brand title="管理工作台"></school-brand>
         <view class="campus-hero admin-campus">
           <image
@@ -96,7 +100,7 @@
         <button class="logout" bindtap="logout">退出登录</button>
         <view class="school-footer">济南大学学生工作处</view>
       </block>
-      <block wx:elif="{{user}}">
+      <block wx:elif="{{!loading && user}}">
         <school-brand></school-brand>
         <view class="campus-hero home-campus">
           <image
@@ -118,7 +122,7 @@
           <view class="muted">已报名 {{item.registeredCount}} / {{item.capacityText}}</view>
           <view class="muted">{{item.activityState}} · {{item.registrationText}}</view>
         </view>
-        <view class="muted" wx:if="{{!activities.length}}">暂无活动</view>
+        <view class="muted" wx:if="{{!errorMessage && !activities.length}}">暂无活动</view>
       </block>
     </view>
   </scroll-view>

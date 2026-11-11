@@ -2,6 +2,11 @@
   <navigation-bar title="我的年度学时" back="{{true}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="load"
+      ></status-panel>
       <view class="hours-toolbar">
         <picker
           class="hours-year"
@@ -24,7 +29,6 @@
           导出 Excel
         </button>
       </view>
-      <view class="muted" wx:if="{{loading}}">正在加载年度学时...</view>
       <block wx:if="{{report}}">
         <view class="stat-grid">
           <view class="stat-card">

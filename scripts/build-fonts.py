@@ -68,6 +68,7 @@ def build():
         encoding='utf-8',
     )
     (target / 'coverage.json').write_text(json.dumps(''.join(sorted(chars)), ensure_ascii=False) + '\n', encoding='utf-8')
+    (target / 'coverage.js').write_text('module.exports = ' + json.dumps(''.join(sorted(chars)), ensure_ascii=False) + '\n', encoding='utf-8')
     shutil.copyfile(ROOT / 'server/fonts/OFL.txt', target / 'OFL.txt')
     full_path = ROOT / 'server/fonts/noto-sans-sc-full.woff2'
     if not full_path.exists():

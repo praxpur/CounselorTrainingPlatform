@@ -1,15 +1,19 @@
 const api = require('../../utils/store')
 Page({
-  data: { activities: [] },
+  data: { loading: false, errorMessage: '', activities: [] },
   onShow() {
     this.load()
   },
   async load() {
     if (!api.guard()) return
+    this.setData({ loading: true, errorMessage: '', activities: [] })
     try {
       this.setData({ activities: (await api.request('/api/admin/activities')).map(api.format) })
     } catch (error) {
+      this.setData({ errorMessage: error.message })
       api.error(error)
+    } finally {
+      this.setData({ loading: false })
     }
   },
   create() {
@@ -22,7 +26,9 @@ Page({
     })
   },
   edit(event) {
-    wx.navigateTo({ url: '/pages/activity-publish/activity-publish?id=' + event.currentTarget.dataset.id })
+    wx.navigateTo({
+      url: '/pages/activity-publish/activity-publish?id=' + event.currentTarget.dataset.id,
+    })
   },
   attendees(event) {
     wx.navigateTo({ url: '/pages/attendees/attendees?id=' + event.currentTarget.dataset.id })

@@ -2,12 +2,19 @@
   <navigation-bar title="活动管理" back="{{true}}"></navigation-bar>
   <scroll-view scroll-y class="screen" scroll-into-view="{{scrollTarget}}">
     <view class="container">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="load"
+      ></status-panel>
       <view class="page-toolbar">
         <view class="muted">管理已发布的培训活动</view>
         <button class="button-mini primary" size="mini" bindtap="create">发布活动</button>
       </view>
 
-      <view class="empty" wx:if="{{!activities.length}}">暂无活动，点击右上方发布活动</view>
+      <view class="empty" wx:if="{{!loading && !errorMessage && !activities.length}}">
+        暂无活动，点击右上方发布活动
+      </view>
       <view class="card" wx:for="{{activities}}" wx:key="id">
         <view class="title">{{item.title}}</view>
         <view class="muted">{{item.startsText}} · {{item.locationText}}</view>

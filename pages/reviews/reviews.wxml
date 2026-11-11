@@ -2,7 +2,12 @@
   <navigation-bar title="培训经历审核" back="{{true}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
-      <view class="page-toolbar">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="load"
+      ></status-panel>
+      <view class="page-toolbar" wx:if="{{!loading && !errorMessage}}">
         <view class="review-heading">
           <view class="title">待审批</view>
           <text class="review-badge">{{pendingCount}}</text>
@@ -16,7 +21,12 @@
         <view class="muted">{{item.name}} · {{item.department}} · {{item.userId}}</view>
         <view class="line">{{item.description}}</view>
         <block wx:if="{{item.status === 'pending'}}">
-          <input placeholder="审核意见（驳回时必填）" data-id="{{item.id}}" bindinput="input" />
+          <input
+            maxlength="500"
+            placeholder="审核意见（驳回时必填）"
+            data-id="{{item.id}}"
+            bindinput="input"
+          />
           <button
             class="button-mini"
             size="mini"
@@ -40,7 +50,7 @@
           {{item.status === 'approved' ? '已通过' : '已驳回'}}　{{item.reviewNote}}
         </view>
       </view>
-      <view class="muted" wx:if="{{!records.length}}">
+      <view class="muted" wx:if="{{!loading && !errorMessage && !records.length}}">
         {{showAll ? '暂无培训经历' : '暂无待审批记录'}}
       </view>
     </view>

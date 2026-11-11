@@ -2,6 +2,11 @@
   <navigation-bar title="培训活动" back="{{false}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="load"
+      ></status-panel>
       <picker
         class="activity-year"
         mode="selector"
@@ -12,7 +17,6 @@
         <view class="activity-year-label">活动年度</view>
         <view class="activity-year-value">{{yearOptions[yearIndex]}} ⌄</view>
       </picker>
-      <view class="muted" wx:if="{{loading}}">正在加载活动...</view>
       <view class="card" wx:for="{{activities}}" wx:key="id" data-id="{{item.id}}" bindtap="open">
         <view class="title">{{item.title}}</view>
         <view class="muted">{{item.startsText}} · {{item.locationText}}</view>
@@ -21,7 +25,9 @@
         </view>
         <view class="muted">{{item.activityState}} · {{item.registrationText}}</view>
       </view>
-      <view class="muted" wx:if="{{!loading && !activities.length}}">所选年度暂无活动</view>
+      <view class="muted" wx:if="{{!loading && !errorMessage && !activities.length}}">
+        所选年度暂无活动
+      </view>
     </view>
   </scroll-view>
 </view>

@@ -10,7 +10,7 @@
         <block wx:if="{{back}}">
           <view class="weui-navigation-bar__buttons weui-navigation-bar__buttons_goback">
             <view
-              bindtap="back"
+              bindtap="onBack"
               class="weui-navigation-bar__btn_goback_wrapper"
               hover-class="weui-active"
               hover-stay-time="100"
@@ -25,7 +25,7 @@
         <block wx:if="{{homeButton}}">
           <view class="weui-navigation-bar__buttons weui-navigation-bar__buttons_home">
             <view
-              bindtap="home"
+              bindtap="onHome"
               class="weui-navigation-bar__btn_home_wrapper"
               hover-class="weui-active"
               aria-role="button"

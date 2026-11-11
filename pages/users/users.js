@@ -2,6 +2,8 @@ const api = require('../../utils/store')
 const empty = () => ({ id: '', name: '', department: '' })
 Page({
   data: {
+    loading: false,
+    errorMessage: '',
     users: [],
     form: empty(),
     editing: false,
@@ -14,7 +16,12 @@ Page({
     this.load()
   },
   create() {
-    this.setData({ editing: false, form: empty(), formVisible: true, scrollTarget: 'user-editor' })
+    this.showEditor({ editing: false, form: empty(), formVisible: true })
+  },
+  showEditor(value) {
+    this.setData({ ...value, scrollTarget: '' }, () =>
+      this.setData({ scrollTarget: 'user-editor' }),
+    )
   },
   input(e) {
     this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value })
@@ -24,21 +31,24 @@ Page({
   },
   async load() {
     if (!api.guard()) return
+    this.setData({ loading: true, errorMessage: '' })
     try {
       this.setData({
         users: await api.request('/api/admin/users?q=' + encodeURIComponent(this.data.query)),
       })
     } catch (e) {
+      this.setData({ errorMessage: e.message })
       api.error(e)
+    } finally {
+      this.setData({ loading: false })
     }
   },
   edit(e) {
     const u = this.data.users.find((x) => x.id === e.currentTarget.dataset.id)
     if (u)
-      this.setData({
+      this.showEditor({
         editing: true,
         formVisible: true,
-        scrollTarget: 'user-editor',
         form: { id: u.id, name: u.name, department: u.department },
       })
   },
@@ -55,12 +65,9 @@ Page({
     this.setData({ busy: true })
     try {
       if (this.data.editing) {
-        const u = this.data.users.find((x) => x.id === f.id)
-        if (!u) throw new Error('请重新选择用户')
         await api.request('/api/admin/users/' + encodeURIComponent(f.id), 'PUT', {
           name: f.name,
           department: f.department,
-          enabled: u.enabled,
         })
       } else {
         await api.request('/api/admin/users', 'POST', f)

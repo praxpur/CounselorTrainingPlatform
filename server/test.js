@@ -4,6 +4,7 @@ process.env.DEV_ADMIN_ID = 'admin'
 const { test, after } = require('node:test')
 const assert = require('node:assert/strict')
 const ExcelJS = require('exceljs')
+const http = require('node:http')
 const { server, db } = require('./server')
 let base
 async function call(path, method = 'GET', data, token) {
@@ -17,8 +18,32 @@ async function call(path, method = 'GET', data, token) {
   })
   return { status: res.status, body: await res.json() }
 }
-async function login(id) {
-  return (await call('/api/auth/dev', 'POST', { id, name: id, department: '测试学院' })).body.token
+async function login(id, name = id) {
+  return (await call('/api/auth/dev', 'POST', { id, name, department: '测试学院' })).body.token
+}
+function streamedRequest(route, method, token, payload, splitAt) {
+  const bytes = Buffer.from(JSON.stringify(payload))
+  const split = splitAt || Math.floor(bytes.length / 2)
+  let request
+  const result = new Promise((resolve, reject) => {
+    request = http.request(
+      base + route,
+      { method, headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' } },
+      (response) => {
+        const chunks = []
+        response.on('data', (chunk) => chunks.push(chunk))
+        response.on('end', () =>
+          resolve({
+            status: response.statusCode,
+            body: JSON.parse(Buffer.concat(chunks).toString('utf8')),
+          }),
+        )
+      },
+    )
+    request.on('error', reject)
+    request.write(bytes.subarray(0, split))
+  })
+  return { result, finish: () => request.end(bytes.subarray(split)) }
 }
 test('活动管理、权限和并发报名', async () => {
   await new Promise((resolve) =>
@@ -27,6 +52,25 @@ test('活动管理、权限和并发报名', async () => {
   base = 'http://127.0.0.1:' + server.address().port
   const admin = await login('admin'),
     user = await login('user')
+  assert.equal((await call('/api/auth/dev', 'POST', { id: 'user', name: '错误姓名' })).status, 403)
+  const expiredToken = 'a'.repeat(64)
+  const expiredHash = require('node:crypto').createHash('sha256').update(expiredToken).digest('hex')
+  db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(expiredHash, 'user', Date.now() - 1000)
+  assert.equal((await call('/api/me', 'GET', null, expiredToken)).status, 401)
+  const originalNodeEnv = process.env.NODE_ENV
+  process.env.NODE_ENV = 'production'
+  assert.equal((await call('/api/auth/dev', 'POST', { id: 'user', name: 'user' })).status, 404)
+  if (originalNodeEnv === undefined) delete process.env.NODE_ENV
+  else process.env.NODE_ENV = originalNodeEnv
+  for (const raw of ['null', '[]', '123', '"invalid"']) {
+    const response = await fetch(base + '/api/auth/dev', { method: 'POST', body: raw })
+    assert.equal(response.status, 400)
+  }
+  const oversized = await fetch(base + '/api/auth/dev', {
+    method: 'POST',
+    body: JSON.stringify({ text: '汉'.repeat(6000) }),
+  })
+  assert.equal(oversized.status, 413)
   assert.equal((await call('/api/admin/review-count', 'GET', null, user)).status, 403)
   assert.equal((await call('/api/admin/review-count', 'GET', null, admin)).body.pendingCount, 0)
   const firstLogin = await call('/api/auth/dev', 'POST', { id: 'newTeacher', name: '新老师' })
@@ -56,7 +100,7 @@ test('活动管理、权限和并发报名', async () => {
     (await call('/api/admin/users', 'POST', { ...entry, id: 'admin' }, admin)).status,
     409,
   )
-  const staff = await login('staff001')
+  const staff = await login('staff001', '测试老师')
   assert.equal((await call('/api/me', 'GET', null, staff)).body.name, '测试老师')
   assert.equal(
     (
@@ -272,10 +316,27 @@ test('活动管理、权限和并发报名', async () => {
   )
   assert.equal((await call('/api/admin/people', 'GET', null, user)).status, 403)
   const second = attendees.body[1].id
+  const secondToken = tokens[Number(second.slice(1))]
+  assert.equal(
+    (
+      await call(
+        '/api/experiences',
+        'POST',
+        { activityId: id, description: '管理员直接确认前的待审经历' },
+        secondToken,
+      )
+    ).status,
+    201,
+  )
   assert.equal(
     (await call('/api/admin/activities/' + id + '/confirm', 'POST', { userId: second }, admin))
       .status,
     200,
+  )
+  assert.equal((await call('/api/admin/review-count', 'GET', null, admin)).body.pendingCount, 0)
+  assert.equal(
+    (await call('/api/my/records', 'GET', null, secondToken)).body[0].experienceStatus,
+    'approved',
   )
   assert.equal(
     (await call('/api/admin/activities/' + id + '/confirm', 'POST', { userId: second }, admin))
@@ -354,6 +415,11 @@ test('活动管理、权限和并发报名', async () => {
     { capacity: 1.5 },
     { title: '' },
     { creditMinutes: null },
+    { creditMinutes: false },
+    { capacity: true },
+    { startsAt: '2026-02-30T10:00:00+08:00' },
+    { startsAt: '2026-11-11T24:00:00+08:00' },
+    { location: {} },
   ]) {
     assert.equal(
       (await call('/api/admin/activities', 'POST', { ...optionalEvent, ...invalid }, admin)).status,
@@ -396,6 +462,12 @@ test('活动管理、权限和并发报名', async () => {
   assert.equal(resubmittedRecords.length, 1)
   assert.equal(resubmittedRecords[0].reviewStatus, 'pending')
   assert.equal(resubmittedRecords[0].experience, '补充后的经历')
+  assert.equal(
+    (await call('/api/admin/activities/' + optionalId, 'DELETE', null, admin)).status,
+    200,
+  )
+  assert.equal((await call('/api/admin/review-count', 'GET', null, admin)).body.pendingCount, 0)
+  assert.equal((await call('/api/my/records', 'GET', null, user)).body[0].reviewStatus, 'cancelled')
   const { personalAnnual } = require('./personal')
   for (const date of ['2024-12-31T23:30:00+08:00', '2025-01-01T00:30:00+08:00']) {
     const start = Date.parse(date)
@@ -423,6 +495,111 @@ test('活动管理、权限和并发报名', async () => {
   assert.equal(fontResponse.headers.get('content-type'), 'font/woff2')
   const fontBytes = Buffer.from(await fontResponse.arrayBuffer())
   assert.equal(fontBytes.toString('ascii', 0, 4), 'wOF2')
+  const cachedFont = await fetch(base + '/fonts/noto-sans-sc-full.woff2', {
+    headers: { 'if-none-match': fontResponse.headers.get('etag') },
+  })
+  assert.equal(cachedFont.status, 304)
+  const utf8Payload = { id: 'utf8-user', name: '测试姓名', department: '学院' }
+  const utf8Bytes = Buffer.from(JSON.stringify(utf8Payload))
+  const utf8Request = streamedRequest(
+    '/api/admin/users',
+    'POST',
+    admin,
+    utf8Payload,
+    utf8Bytes.indexOf(Buffer.from('测')) + 1,
+  )
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  utf8Request.finish()
+  assert.equal((await utf8Request.result).body.name, '测试姓名')
+  const raceActivity = await call(
+    '/api/admin/activities',
+    'POST',
+    { ...optionalEvent, capacity: 4 },
+    admin,
+  )
+  const raceId = raceActivity.body.id
+  const editRequest = streamedRequest('/api/admin/activities/' + raceId, 'PUT', admin, {
+    ...optionalEvent,
+    capacity: 1,
+  })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(
+    (await call('/api/activities/' + raceId + '/register', 'POST', {}, user)).status,
+    200,
+  )
+  assert.equal(
+    (await call('/api/activities/' + raceId + '/register', 'POST', {}, tokens[0])).status,
+    200,
+  )
+  editRequest.finish()
+  assert.equal((await editRequest.result).status, 409)
+  assert.equal(db.prepare('SELECT capacity FROM activities WHERE id=?').get(raceId).capacity, 4)
+  const staffToken = await login('staff001', '修改后')
+  assert.equal(
+    (await call('/api/activities/' + raceId + '/register', 'POST', {}, staffToken)).status,
+    200,
+  )
+  db.prepare('UPDATE activities SET starts_at=? WHERE id=?').run(Date.now() - 60000, raceId)
+  const disabledRequest = streamedRequest('/api/experiences', 'POST', staffToken, {
+    activityId: raceId,
+    description: '停用期间不能提交',
+  })
+  await new Promise((resolve) => setTimeout(resolve, 10))
+  assert.equal(
+    (
+      await call(
+        '/api/admin/users/staff001',
+        'PUT',
+        { name: '修改后', department: '新学院', enabled: 0 },
+        admin,
+      )
+    ).status,
+    200,
+  )
+  disabledRequest.finish()
+  assert.equal((await disabledRequest.result).status, 401)
+  assert.equal(
+    db
+      .prepare("SELECT COUNT(*) count FROM experiences WHERE user_id='staff001' AND activity_id=?")
+      .get(raceId).count,
+    0,
+  )
+  const legacy = db
+    .prepare(
+      "INSERT INTO experiences(user_id,title,organizer,occurred_on,description,created_at) VALUES(?,'旧经历','旧系统','2026-01-01','未关联活动',?)",
+    )
+    .run('user', Date.now())
+  const legacyId = Number(legacy.lastInsertRowid)
+  assert.equal(
+    (
+      await call(
+        '/api/admin/experiences/' + legacyId + '/review',
+        'POST',
+        { status: 'approved' },
+        admin,
+      )
+    ).status,
+    409,
+  )
+  assert.equal(
+    (
+      await call(
+        '/api/admin/experiences/' + legacyId + '/review',
+        'POST',
+        { status: 'rejected', note: '请关联正确活动重新提交' },
+        admin,
+      )
+    ).status,
+    200,
+  )
+  for (let index = 0; index < 1001; index++)
+    db.prepare("INSERT INTO users(id,name,department,role) VALUES(?,?,?,'counselor')").run(
+      'bulk-' + index,
+      '批量测试' + index,
+      '测试学院',
+    )
+  assert.ok((await call('/api/admin/users', 'GET', null, admin)).body.length > 1000)
+  assert.ok((await call('/api/admin/people', 'GET', null, admin)).body.length > 1000)
 })
 after(() => {
   server.close()

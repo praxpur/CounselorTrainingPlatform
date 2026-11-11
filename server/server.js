@@ -4,7 +4,7 @@ const { personalRecords, personalAnnual } = require('./personal')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const pathModule = require('node:path')
-let fullFontBuffer
+let fullFontPromise
 const { DatabaseSync } = require('node:sqlite')
 const db = new DatabaseSync(
   process.env.DB_PATH || require('node:path').join(__dirname, 'training.db'),
@@ -61,6 +61,10 @@ if (
     .some((c) => c.name === 'activity_id')
 )
   db.exec('ALTER TABLE experiences ADD COLUMN activity_id INTEGER REFERENCES activities(id)')
+db.exec(`CREATE INDEX IF NOT EXISTS experience_user_activity ON experiences(user_id,activity_id,created_at DESC,id DESC);
+CREATE INDEX IF NOT EXISTS experience_status ON experiences(status,created_at);
+CREATE INDEX IF NOT EXISTS session_expiry ON sessions(expires);
+CREATE INDEX IF NOT EXISTS activity_start ON activities(starts_at);`)
 const all = (sql, ...args) => db.prepare(sql).all(...args)
 const run = (sql, ...args) => db.prepare(sql).run(...args)
 const fail = (status, message) => {
@@ -79,19 +83,31 @@ const send = (res, status, value) => {
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex')
 function body(req) {
   return new Promise((resolve, reject) => {
-    let s = ''
+    const chunks = []
+    let bytes = 0
+    let tooLarge = false
     req.on('data', (chunk) => {
-      s += chunk
-      if (s.length > 16384) {
-        reject(Object.assign(new Error('请求过大'), { status: 413 }))
-        req.destroy()
+      bytes += chunk.length
+      if (bytes > 16384) {
+        tooLarge = true
+        return
       }
+      chunks.push(chunk)
     })
     req.on('end', () => {
+      if (tooLarge) {
+        reject(Object.assign(new Error('请求过大'), { status: 413 }))
+        return
+      }
       try {
-        resolve(s ? JSON.parse(s) : {})
-      } catch {
-        reject(Object.assign(new Error('请求格式错误'), { status: 400 }))
+        const text = Buffer.concat(chunks).toString('utf8')
+        const value = text ? JSON.parse(text) : {}
+        if (!value || typeof value !== 'object' || Array.isArray(value))
+          throw new Error('invalid object')
+        if (req.authenticatedUser) requireUser(req)
+        resolve(value)
+      } catch (error) {
+        reject(error.status ? error : Object.assign(new Error('请求格式错误'), { status: 400 }))
       }
     })
     req.on('error', reject)
@@ -107,21 +123,52 @@ function requireUser(req) {
       Date.now(),
     )
   if (!user) fail(401, '请登录')
+  req.authenticatedUser = user.id
   return user
 }
 function admin(user) {
   if (user.role !== 'admin') fail(403, '无管理员权限')
 }
+function activityTime(value) {
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+  )
+    return NaN
+  const year = Number(value.slice(0, 4)),
+    month = Number(value.slice(5, 7)),
+    day = Number(value.slice(8, 10))
+  const calendar = new Date(Date.UTC(year, month - 1, day))
+  if (
+    year < 2000 ||
+    year > 2100 ||
+    calendar.getUTCMonth() !== month - 1 ||
+    calendar.getUTCDate() !== day ||
+    Number(value.slice(11, 13)) > 23 ||
+    Number(value.slice(14, 16)) > 59
+  )
+    return NaN
+  return Date.parse(value)
+}
 function activityInput(input) {
+  if (
+    typeof input.title !== 'string' ||
+    (input.description != null && typeof input.description !== 'string') ||
+    (input.location != null && typeof input.location !== 'string')
+  )
+    fail(400, '活动名称、介绍和地点须为文字')
+  const capacityValue = typeof input.capacity === 'string' ? input.capacity.trim() : input.capacity
+  const numeric = (value) =>
+    typeof value === 'number' || (typeof value === 'string' && /^\d+$/.test(value.trim()))
   const title = String(input.title || '').trim(),
     description = String(input.description || '').trim(),
     location = String(input.location || '').trim()
-  const starts = Date.parse(input.startsAt),
-    ends = Date.parse(input.endsAt),
+  const starts = activityTime(input.startsAt),
+    ends = activityTime(input.endsAt),
     capacity =
-      input.capacity === undefined || input.capacity === null || input.capacity === ''
+      capacityValue === undefined || capacityValue === null || capacityValue === ''
         ? 0
-        : Number(input.capacity),
+        : Number(capacityValue),
     minutes = Number(input.creditMinutes)
   if (
     !title ||
@@ -132,13 +179,15 @@ function activityInput(input) {
     !Number.isFinite(ends) ||
     ends <= starts ||
     !Number.isInteger(capacity) ||
+    (capacity !== 0 && !numeric(capacityValue)) ||
     capacity < 0 ||
     (capacity === 0 &&
-      input.capacity !== undefined &&
-      input.capacity !== null &&
-      input.capacity !== '') ||
+      capacityValue !== undefined &&
+      capacityValue !== null &&
+      capacityValue !== '') ||
     capacity > 100000 ||
     !Number.isInteger(minutes) ||
+    !numeric(input.creditMinutes) ||
     input.creditMinutes === undefined ||
     input.creditMinutes === null ||
     input.creditMinutes === '' ||
@@ -174,30 +223,44 @@ function activity(id, user) {
   if (!a) fail(404, '活动不存在')
   return a
 }
-function ranking(url) {
-  const year = Number(
-    url.searchParams.get('year') || new Date(Date.now() + 8 * 3600000).getUTCFullYear(),
-  )
+function readYear(url) {
+  const value = url.searchParams.get('year')
+  const year = value === null ? new Date(Date.now() + 8 * 3600000).getUTCFullYear() : Number(value)
   if (!Number.isInteger(year) || year < 2000 || year > 2100) fail(400, '年份不正确')
-  const start = Date.parse(year + '-01-01T00:00:00+08:00'),
-    end = Date.parse(year + 1 + '-01-01T00:00:00+08:00')
-  const rows = all("SELECT id,name,department FROM users WHERE role='counselor' ORDER BY id")
-    .map((person) => {
-      const event = get(
-        "SELECT COUNT(*) count, COALESCE(SUM(r.credited_minutes),0) minutes FROM registrations r JOIN activities a ON a.id=r.activity_id WHERE r.user_id=? AND r.confirmed_at IS NOT NULL AND a.status='published' AND a.starts_at>=? AND a.starts_at<?",
-        person.id,
-        start,
-        end,
-      )
-      return { ...person, eventCount: event.count, totalMinutes: event.minutes }
-    })
-    .sort((a, b) => b.totalMinutes - a.totalMinutes || a.id.localeCompare(b.id))
+  return year
+}
+function activityList(user, where, args, order) {
+  return all(
+    `SELECT a.*,COALESCE(counts.registered_count,0) registered_count,
+    own.user_id registered,own.confirmed_at confirmed_at FROM activities a
+    LEFT JOIN (SELECT activity_id,COUNT(*) registered_count FROM registrations GROUP BY activity_id) counts ON counts.activity_id=a.id
+    LEFT JOIN registrations own ON own.activity_id=a.id AND own.user_id=?
+    WHERE ${where} ORDER BY ${order}`,
+    user.id,
+    ...args,
+  ).map(dto)
+}
+function ranking(url) {
+  const year = readYear(url)
+  const start = Date.parse(year + '-01-01T00:00:00+08:00')
+  const end = Date.parse(year + 1 + '-01-01T00:00:00+08:00')
+  const rows = all(
+    `SELECT u.id,u.name,u.department,COUNT(a.id) eventCount,
+    COALESCE(SUM(CASE WHEN a.id IS NOT NULL THEN r.credited_minutes ELSE 0 END),0) totalMinutes
+    FROM users u LEFT JOIN registrations r ON r.user_id=u.id AND r.confirmed_at IS NOT NULL
+    LEFT JOIN activities a ON a.id=r.activity_id AND a.status='published' AND a.starts_at>=? AND a.starts_at<?
+    WHERE u.role='counselor' GROUP BY u.id`,
+    start,
+    end,
+  ).sort((a, b) => b.totalMinutes - a.totalMinutes || a.id.localeCompare(b.id))
+  let previousMinutes, rank
   return {
     year,
-    rows: rows.map((person) => ({
-      ...person,
-      rank: rows.findIndex((row) => row.totalMinutes === person.totalMinutes) + 1,
-    })),
+    rows: rows.map((person, index) => {
+      if (person.totalMinutes !== previousMinutes) rank = index + 1
+      previousMinutes = person.totalMinutes
+      return { ...person, rank }
+    }),
   }
 }
 
@@ -208,17 +271,31 @@ const server = http.createServer(async (req, res) => {
       method = req.method
     if (path === '/health' && method === 'GET') return send(res, 200, { ok: true })
     if (path === '/fonts/noto-sans-sc-full.woff2' && method === 'GET') {
-      if (!fullFontBuffer)
-        fullFontBuffer = await fs.readFile(
-          pathModule.join(__dirname, 'fonts/noto-sans-sc-full.woff2'),
-        )
+      if (!fullFontPromise)
+        fullFontPromise = fs
+          .readFile(pathModule.join(__dirname, 'fonts/noto-sans-sc-full.woff2'))
+          .then((buffer) => ({ buffer, etag: '"' + hash(buffer) + '"' }))
+          .catch((error) => {
+            fullFontPromise = null
+            throw error
+          })
+      const { buffer, etag } = await fullFontPromise
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304, {
+          ETag: etag,
+          'Access-Control-Allow-Origin': '*',
+          'Cache-Control': 'public, max-age=86400',
+        })
+        return res.end()
+      }
       res.writeHead(200, {
         'Content-Type': 'font/woff2',
-        'Content-Length': fullFontBuffer.length,
+        'Content-Length': buffer.length,
+        ETag: etag,
         'Access-Control-Allow-Origin': '*',
         'Cache-Control': 'public, max-age=86400',
       })
-      return res.end(fullFontBuffer)
+      return res.end(buffer)
     }
     // This is deliberately disabled in production. Replace with a verified school identity exchange.
     if (path === '/api/auth/dev' && method === 'POST') {
@@ -233,6 +310,7 @@ const server = http.createServer(async (req, res) => {
       const role = id === process.env.DEV_ADMIN_ID ? 'admin' : 'counselor'
       const existing = get('SELECT * FROM users WHERE id=?', id)
       if (existing && !existing.enabled) fail(403, '该用户已停用')
+      if (existing && existing.name !== name) fail(403, '工号与姓名不匹配，请核对后重试')
       if ((!existing || !existing.department) && !department) {
         return send(res, 422, { error: '首次登录，请补充学院或部门', code: 'DEPARTMENT_REQUIRED' })
       }
@@ -246,20 +324,18 @@ const server = http.createServer(async (req, res) => {
         )
       else if (!existing.department) run('UPDATE users SET department=? WHERE id=?', department, id)
       const token = crypto.randomBytes(32).toString('hex')
+      run('DELETE FROM sessions WHERE expires<=?', Date.now())
       run('INSERT INTO sessions VALUES(?,?,?)', hash(token), id, Date.now() + 8 * 3600000)
       const user = get('SELECT id,name,department,role FROM users WHERE id=?', id)
       return send(res, 200, { token, user })
     }
-    if (path.startsWith('/api/auth/')) fail(503, '学校统一身份认证尚未接入')
+    if (path.startsWith('/api/auth/')) fail(503, '正式身份认证尚未配置')
     const u = requireUser(req)
     if (path === '/api/my/records' && method === 'GET') {
       return send(res, 200, personalRecords(db, u.id))
     }
     if (['/api/my/annual', '/api/my/exports/annual'].includes(path) && method === 'GET') {
-      const year = Number(
-        url.searchParams.get('year') || new Date(Date.now() + 8 * 3600000).getUTCFullYear(),
-      )
-      if (!Number.isInteger(year) || year < 2000 || year > 2100) fail(400, '年份不正确')
+      const year = readYear(url)
       const report = personalAnnual(db, u.id, year)
       if (path === '/api/my/annual') return send(res, 200, report)
       return await sendWorkbook(res, year + '-我的年度学时.xlsx', [
@@ -325,7 +401,7 @@ const server = http.createServer(async (req, res) => {
         res,
         200,
         all(
-          "SELECT id,name,department,enabled FROM users WHERE role='counselor' AND (instr(id,?)>0 OR instr(name,?)>0 OR instr(department,?)>0) ORDER BY enabled DESC,department,name,id LIMIT 1000",
+          "SELECT id,name,department,enabled FROM users WHERE role='counselor' AND (instr(id,?)>0 OR instr(name,?)>0 OR instr(department,?)>0) ORDER BY enabled DESC,department,name,id",
           q,
           q,
           q,
@@ -368,27 +444,28 @@ const server = http.createServer(async (req, res) => {
         name.length > 50 ||
         !department ||
         department.length > 100 ||
-        ![0, 1].includes(b.enabled)
+        (b.enabled !== undefined && ![0, 1].includes(b.enabled))
       )
         fail(400, '请填写有效姓名、部门和状态')
-      const existing = get("SELECT id FROM users WHERE id=? AND role='counselor'", id)
+      const existing = get("SELECT id,enabled FROM users WHERE id=? AND role='counselor'", id)
       if (!existing) fail(404, '辅导员不存在')
+      const enabled = b.enabled === undefined ? existing.enabled : b.enabled
       run(
         'UPDATE users SET name=?,department=?,enabled=? WHERE id=?',
         name,
         department,
-        b.enabled,
+        enabled,
         id,
       )
-      if (!b.enabled) run('DELETE FROM sessions WHERE user_id=?', id)
-      return send(res, 200, { id, name, department, enabled: b.enabled })
+      if (!enabled) run('DELETE FROM sessions WHERE user_id=?', id)
+      return send(res, 200, { id, name, department, enabled })
     }
     if (path === '/api/experiences' && method === 'GET')
       return send(
         res,
         200,
         all(
-          'SELECT id,activity_id activityId,title,description,status,credit_minutes creditMinutes,review_note reviewNote FROM experiences WHERE user_id=? ORDER BY created_at DESC LIMIT 500',
+          'SELECT id,activity_id activityId,title,description,status,credit_minutes creditMinutes,review_note reviewNote FROM experiences WHERE user_id=? ORDER BY created_at DESC',
           u.id,
         ),
       )
@@ -401,6 +478,7 @@ const server = http.createServer(async (req, res) => {
       const a = activity(id, u)
       if (!a.registered || a.status !== 'published')
         fail(409, '只能提交已报名且未取消活动的培训经历')
+      if (a.starts_at > Date.now()) fail(409, '活动尚未开始，请参加后再提交培训经历')
       if (
         get(
           "SELECT id FROM experiences WHERE user_id=? AND activity_id=? AND status IN ('pending','approved')",
@@ -428,7 +506,7 @@ const server = http.createServer(async (req, res) => {
         res,
         200,
         all(
-          "SELECT e.id,e.activity_id activityId,e.title,e.description,e.status,e.credit_minutes creditMinutes,e.review_note reviewNote,u.name,u.department,u.id userId FROM experiences e JOIN users u ON e.user_id=u.id ORDER BY CASE WHEN e.status='pending' THEN 0 ELSE 1 END,e.created_at DESC LIMIT 500",
+          "SELECT e.id,e.activity_id activityId,e.title,e.description,e.status,e.credit_minutes creditMinutes,e.review_note reviewNote,u.name,u.department,u.id userId FROM experiences e JOIN users u ON e.user_id=u.id ORDER BY CASE WHEN e.status='pending' THEN 0 ELSE 1 END,e.created_at DESC",
         ),
       )
     }
@@ -448,9 +526,9 @@ const server = http.createServer(async (req, res) => {
       try {
         const exp = get('SELECT * FROM experiences WHERE id=?', Number(reviewMatch[1]))
         if (!exp || exp.status !== 'pending') fail(409, '记录不存在或已审核')
-        if (!exp.activity_id) fail(409, '旧版记录未关联活动，请重新提交')
-        const a = activity(exp.activity_id, { id: exp.user_id })
+        const a = exp.activity_id ? activity(exp.activity_id, { id: exp.user_id }) : null
         if (status === 'approved') {
+          if (!a) fail(409, '旧版记录未关联活动，可驳回后让老师重新提交')
           if (a.status !== 'published' || !a.registered) fail(409, '活动已取消或报名不存在')
           if (a.starts_at > Date.now()) fail(409, '活动尚未开始，不能确认参加')
           run(
@@ -491,22 +569,20 @@ const server = http.createServer(async (req, res) => {
           Date.parse(year + 1 + '-01-01T00:00:00+08:00'),
         )
       }
-      const ids = all(
-        "SELECT a.id FROM activities a WHERE a.status='published'" +
-          yearFilter +
-          ' ORDER BY CASE WHEN a.ends_at>? THEN 0 ELSE 1 END, a.starts_at DESC LIMIT 500',
-        ...args,
-        Date.now(),
-      )
       return send(
         res,
         200,
-        ids.map((x) => dto(activity(x.id, u))),
+        activityList(
+          u,
+          "a.status='published'" + yearFilter,
+          [...args, Date.now()],
+          'CASE WHEN a.ends_at>? THEN 0 ELSE 1 END,a.starts_at DESC,a.id DESC',
+        ),
       )
     }
     if (path === '/api/records' && method === 'GET') {
       const ids = all(
-        'SELECT activity_id FROM registrations WHERE user_id=? ORDER BY registered_at DESC LIMIT 500',
+        'SELECT activity_id FROM registrations WHERE user_id=? ORDER BY registered_at DESC',
         u.id,
       )
       return send(
@@ -606,7 +682,7 @@ const server = http.createServer(async (req, res) => {
         res,
         200,
         all(
-          "SELECT u.id,u.name,u.department,COUNT(r.activity_id) registeredCount,COUNT(r.confirmed_at) confirmedCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' GROUP BY u.id ORDER BY u.department,u.name LIMIT 500",
+          "SELECT u.id,u.name,u.department,COUNT(r.activity_id) registeredCount,COUNT(r.confirmed_at) confirmedCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' GROUP BY u.id ORDER BY u.department,u.name",
         ),
       )
     }
@@ -619,20 +695,14 @@ const server = http.createServer(async (req, res) => {
         res,
         200,
         all(
-          'SELECT activity_id FROM registrations WHERE user_id=? ORDER BY registered_at DESC LIMIT 500',
+          'SELECT activity_id FROM registrations WHERE user_id=? ORDER BY registered_at DESC',
           userId,
         ).map((x) => dto(activity(x.activity_id, person))),
       )
     }
     if (path === '/api/admin/activities' && method === 'GET') {
       admin(u)
-      return send(
-        res,
-        200,
-        all('SELECT id FROM activities ORDER BY created_at DESC LIMIT 500').map((x) =>
-          dto(activity(x.id, u)),
-        ),
-      )
+      return send(res, 200, activityList(u, '1=1', [], 'a.created_at DESC,a.id DESC'))
     }
     if (path === '/api/admin/activities' && method === 'POST') {
       admin(u)
@@ -676,9 +746,10 @@ const server = http.createServer(async (req, res) => {
     m = path.match(/^\/api\/admin\/activities\/(\d+)$/)
     if (m && method === 'PUT') {
       admin(u)
+      const input = await body(req)
       const id = Number(m[1]),
         a = activity(id, u),
-        v = activityInput(await body(req))
+        v = activityInput(input)
       if (a.status !== 'published') fail(409, '已取消的活动不能修改')
       if (v[5] > 0 && v[5] < a.registered_count) fail(409, '人数上限不能少于已报名人数')
       if (
@@ -700,7 +771,20 @@ const server = http.createServer(async (req, res) => {
       admin(u)
       const id = Number(m[1])
       activity(id, u)
-      run("UPDATE activities SET status='cancelled' WHERE id=?", id)
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        run("UPDATE activities SET status='cancelled' WHERE id=?", id)
+        run(
+          "UPDATE experiences SET status='rejected',credit_minutes=0,review_note='活动已取消',reviewed_by=?,reviewed_at=? WHERE activity_id=? AND status='pending'",
+          u.id,
+          Date.now(),
+          id,
+        )
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
       return send(res, 200, { ok: true })
     }
     m = path.match(/^\/api\/admin\/activities\/(\d+)\/attendees$/)
@@ -723,15 +807,30 @@ const server = http.createServer(async (req, res) => {
         b = await body(req),
         a = activity(id, u)
       if (a.status !== 'published' || a.starts_at > Date.now()) fail(409, '活动已取消或尚未开始')
-      const result = run(
-        'UPDATE registrations SET confirmed_at=?,confirmed_by=?,credited_minutes=? WHERE activity_id=? AND user_id=? AND confirmed_at IS NULL',
-        Date.now(),
-        u.id,
-        a.credit_minutes,
-        id,
-        String(b.userId || ''),
-      )
-      if (!result.changes) fail(409, '未报名或已确认参加')
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const result = run(
+          'UPDATE registrations SET confirmed_at=?,confirmed_by=?,credited_minutes=? WHERE activity_id=? AND user_id=? AND confirmed_at IS NULL',
+          Date.now(),
+          u.id,
+          a.credit_minutes,
+          id,
+          String(b.userId || ''),
+        )
+        if (!result.changes) fail(409, '未报名或已确认参加')
+        run(
+          "UPDATE experiences SET status='approved',credit_minutes=?,reviewed_by=?,reviewed_at=?,review_note=CASE WHEN review_note='' THEN '管理员已确认参加' ELSE review_note END WHERE activity_id=? AND user_id=? AND status='pending'",
+          a.credit_minutes,
+          u.id,
+          Date.now(),
+          id,
+          String(b.userId || ''),
+        )
+        db.exec('COMMIT')
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
       return send(res, 200, { ok: true })
     }
     fail(404, '接口不存在')
@@ -747,4 +846,6 @@ if (require.main === module) {
     console.log(`Listening on ${host}:${server.address().port}`),
   )
 }
+server.requestTimeout = 15000
+server.headersTimeout = 10000
 module.exports = { server, db }

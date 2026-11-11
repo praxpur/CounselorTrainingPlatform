@@ -1,0 +1,12 @@
+.status-loading {
+  color: #64748b;
+  padding: 30rpx 0;
+  text-align: center;
+}
+.status-error {
+  padding: 24rpx;
+  border-radius: 16rpx;
+  background: #fff3ec;
+  color: #a35526;
+  margin: 16rpx 0;
+}

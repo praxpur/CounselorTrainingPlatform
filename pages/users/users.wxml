@@ -2,6 +2,11 @@
   <navigation-bar title="用户名单管理" back="{{true}}"></navigation-bar>
   <scroll-view scroll-y class="screen" scroll-into-view="{{scrollTarget}}">
     <view class="container">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="load"
+      ></status-panel>
       <view class="page-toolbar">
         <view class="title">辅导员名单</view>
         <button size="mini" class="button-mini primary" bindtap="create">新增用户</button>
@@ -10,14 +15,22 @@
         <view class="title">{{editing ? '编辑辅导员' : '新增辅导员'}}</view>
         <view class="muted">工号保存后不可修改；停用用户会保留报名记录。</view>
         <input
+          maxlength="40"
           placeholder="工号（字母、数字、下划线或连字符）"
           value="{{form.id}}"
           disabled="{{editing}}"
           data-field="id"
           bindinput="input"
         />
-        <input placeholder="姓名" value="{{form.name}}" data-field="name" bindinput="input" />
         <input
+          maxlength="50"
+          placeholder="姓名"
+          value="{{form.name}}"
+          data-field="name"
+          bindinput="input"
+        />
+        <input
+          maxlength="100"
           placeholder="学院 / 部门"
           value="{{form.department}}"
           data-field="department"
@@ -54,7 +67,7 @@
           </button>
         </view>
       </view>
-      <view class="muted" wx:if="{{!users.length}}">暂无匹配用户</view>
+      <view class="muted" wx:if="{{!loading && !errorMessage && !users.length}}">暂无匹配用户</view>
     </view>
   </scroll-view>
 </view>

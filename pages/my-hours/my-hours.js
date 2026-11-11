@@ -1,6 +1,6 @@
 const api = require('../../utils/store')
 const years = Array.from({ length: 101 }, (_, index) => 2000 + index)
-const currentYear = new Date().getFullYear()
+const currentYear = new Date(Date.now() + 8 * 3600000).getUTCFullYear()
 
 Page({
   data: {
@@ -10,6 +10,7 @@ Page({
     report: null,
     months: [],
     records: [],
+    errorMessage: '',
     loading: false,
     exporting: false,
   },
@@ -25,7 +26,7 @@ Page({
     if (!api.guard()) return
     const requestId = (this.requestId || 0) + 1
     this.requestId = requestId
-    this.setData({ loading: true })
+    this.setData({ loading: true, errorMessage: '', report: null, records: [], months: [] })
     try {
       const report = await api.request('/api/my/annual?year=' + this.data.year)
       if (this.requestId !== requestId) return
@@ -42,7 +43,10 @@ Page({
         })),
       })
     } catch (error) {
-      if (this.requestId === requestId) api.error(error)
+      if (this.requestId === requestId) {
+        this.setData({ errorMessage: error.message })
+        api.error(error)
+      }
     } finally {
       if (this.requestId === requestId) this.setData({ loading: false })
     }

@@ -2,6 +2,8 @@ const api = require('../../utils/store')
 
 Page({
   data: {
+    loading: false,
+    errorMessage: '',
     allRecords: [],
     records: [],
     filter: 'all',
@@ -14,6 +16,7 @@ Page({
   },
   async load() {
     if (!api.guard()) return
+    this.setData({ loading: true, errorMessage: '', records: [], allRecords: [] })
     try {
       const records = (await api.request('/api/my/records')).map((r) => ({
         ...r,
@@ -25,7 +28,10 @@ Page({
       this.setData({ allRecords: records })
       this.applyFilter()
     } catch (error) {
+      this.setData({ errorMessage: error.message })
       api.error(error)
+    } finally {
+      this.setData({ loading: false })
     }
   },
   changeFilter(event) {

@@ -2,12 +2,18 @@
   <navigation-bar title="{{editing ? '编辑活动' : '活动发布'}}" back="{{true}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
-      <view class="card">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="load"
+      ></status-panel>
+      <view class="card" wx:if="{{ready}}">
         <view class="field-label">
           <text class="required-mark">*</text>
           活动名称
         </view>
         <input
+          maxlength="100"
           placeholder="请输入活动名称"
           value="{{form.title}}"
           data-field="title"
@@ -18,6 +24,7 @@
           <text class="optional-hint">（可选）</text>
         </view>
         <input
+          maxlength="200"
           placeholder="选填，留空显示地点待定"
           value="{{form.location}}"
           data-field="location"
@@ -28,6 +35,7 @@
           <text class="optional-hint">（可选）</text>
         </view>
         <textarea
+          maxlength="2000"
           placeholder="选填，补充活动内容或注意事项"
           value="{{form.description}}"
           data-field="description"
@@ -79,7 +87,12 @@
           data-field="capacity"
           bindinput="input"
         />
-        <button class="primary" bindtap="save" loading="{{busy}}">
+        <button
+          class="primary"
+          bindtap="save"
+          loading="{{busy}}"
+          disabled="{{busy || loading || !ready}}"
+        >
           {{editing ? '保存修改' : '发布活动'}}
         </button>
         <button bindtap="reset">取消</button>

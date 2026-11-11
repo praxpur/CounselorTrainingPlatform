@@ -1,8 +1,9 @@
 const api = require('../../utils/store')
 Page({
-  data: { user: {} },
+  data: { loading: false, errorMessage: '', user: {} },
   async onShow() {
     if (!api.guard()) return
+    this.setData({ loading: true, errorMessage: '' })
     try {
       const user = await api.request('/api/me')
       if (user.role === 'admin') {
@@ -11,7 +12,10 @@ Page({
       }
       this.setData({ user })
     } catch (e) {
+      this.setData({ errorMessage: e.message })
       api.error(e)
+    } finally {
+      this.setData({ loading: false })
     }
   },
   admin() {

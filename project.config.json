@@ -25,6 +25,7 @@
   "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [
+      { "type": "folder", "value": "docs" },
       {
         "type": "folder",
         "value": "scripts"

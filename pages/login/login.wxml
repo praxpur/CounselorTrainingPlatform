@@ -1,5 +1,5 @@
 <view class="page-shell">
-  <navigation-bar title="济南大学 · 辅导员培训" back="{{false}}"></navigation-bar>
+  <navigation-bar title="登录" back="{{false}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
       <school-brand></school-brand>
@@ -15,15 +15,16 @@
         <view class="title">登录培训平台</view>
         <view class="muted">查看培训活动，记录成长历程</view>
         <view class="field-label">工号</view>
-        <input placeholder="请输入测试工号" data-field="id" bindinput="input" />
+        <input maxlength="40" placeholder="请输入测试工号" data-field="id" bindinput="input" />
         <view class="field-label">姓名</view>
-        <input placeholder="请输入姓名" data-field="name" bindinput="input" />
+        <input maxlength="50" placeholder="请输入姓名" data-field="name" bindinput="input" />
         <block wx:if="{{departmentRequired}}">
           <view class="field-label">
             <text class="required-mark">*</text>
             学院 / 部门（首次填写）
           </view>
           <input
+            maxlength="100"
             placeholder="首次登录请补充学院或部门"
             value="{{department}}"
             data-field="department"
@@ -31,7 +32,12 @@
           />
           <view class="muted">保存后，再次登录无需重复填写。</view>
         </block>
-        <button class="primary" loading="{{loading}}" disabled="{{loading}}" bindtap="login">
+        <button
+          class="primary"
+          loading="{{loading}}"
+          disabled="{{loading || !id || !name || (departmentRequired && !department)}}"
+          bindtap="login"
+        >
           登录
         </button>
         <view class="login-hint">开发测试环境 · 当前登录用于功能验证</view>

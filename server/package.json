@@ -1,1 +1,21 @@
-{"name":"counselor-training-server","version":"0.1.0","private":true,"type":"commonjs","engines":{"node":">=22.13.0"},"scripts":{"start":"node server.js","test":"node --test test.js"},"dependencies":{"exceljs":"^4.4.0"}}
+{
+  "name": "counselor-training-server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "commonjs",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test.js frontend.test.js",
+    "test:load": "node load-test.js",
+    "test:load:cold": "node load-test.js --cold"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
+  }
+}

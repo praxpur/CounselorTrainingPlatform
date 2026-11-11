@@ -2,16 +2,42 @@
   <navigation-bar title="人员参加情况" back="{{true}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="load"
+      ></status-panel>
       <block wx:if="{{!selected}}">
         <view class="page-toolbar">
           <view class="muted">人员报名及参加记录</view>
-          <button class="button-mini export-button" size="mini" bindtap="exportData" loading="{{exporting}}" disabled="{{exporting}}">导出 Excel</button>
+          <button
+            class="button-mini export-button"
+            size="mini"
+            bindtap="exportData"
+            loading="{{exporting}}"
+            disabled="{{exporting}}"
+          >
+            导出 Excel
+          </button>
         </view>
-        <view class="card" wx:for="{{people}}" wx:key="id" data-id="{{item.id}}" bindtap="select">
+        <input placeholder="搜索工号、姓名或学院" value="{{query}}" bindinput="search" />
+        <view class="muted">共 {{visiblePeople.length}} 人</view>
+        <view
+          class="card"
+          wx:for="{{visiblePeople}}"
+          wx:key="id"
+          data-id="{{item.id}}"
+          bindtap="select"
+        >
           <view class="title">{{item.name}} · {{item.department}}</view>
-          <view class="muted">工号 {{item.id}}　报名 {{item.registeredCount}} 次</view>
+          <view class="muted">
+            工号 {{item.id}}　历史报名 {{item.registeredCount}} 次 · 历史确认
+            {{item.confirmedCount}} 次
+          </view>
         </view>
-        <view class="muted" wx:if="{{!people.length}}">暂无人员</view>
+        <view class="muted" wx:if="{{!loading && !errorMessage && !visiblePeople.length}}">
+          暂无匹配人员
+        </view>
       </block>
       <block wx:else>
         <button bindtap="back">返回人员列表</button>
@@ -24,7 +50,9 @@
             '已报名，待确认参加'}}
           </view>
         </view>
-        <view class="muted" wx:if="{{!records.length}}">暂无报名记录</view>
+        <view class="muted" wx:if="{{!loading && !errorMessage && !records.length}}">
+          暂无报名记录
+        </view>
       </block>
     </view>
   </scroll-view>

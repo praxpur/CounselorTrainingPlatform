@@ -3,7 +3,7 @@
 本项目使用 Google / Adobe 的 Noto Sans CJK SC，遵循 SIL Open Font License 1.1；原许可证和版权声明保存在本目录及 `server/fonts`。来源固定到 `server/fonts/source.json` 中的提交及 SHA-256。
 
 - `noto-sans-sc.wxss`：包含界面文字和常见姓氏的 WOFF2 子集，内嵌在小程序内，离线可用。
-- `coverage.json`：该子集包含的字符，用于判断接口数据是否需要完整字体。
+- `coverage.js`：小程序实际加载的字库清单；`coverage.json` 仅供构建检查。微信小程序不能按 Node.js 的方式直接 require JSON。
 - `server/fonts/noto-sans-sc-full.woff2`：完整字库，由同一学校后端按需提供；约 11 MB，仅遇到子集以外的汉字时加载，由客户端缓存。
 - 衍生字体内部命名为 `Campus Noto SC` / `Campus Noto SC Full`，保留原版权及许可证。
 

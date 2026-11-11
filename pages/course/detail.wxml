@@ -1,6 +1,11 @@
 <view class="page-shell">
   <navigation-bar title="活动详情" back="{{true}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
+    <status-panel
+      loading="{{loading}}"
+      error-message="{{errorMessage}}"
+      bindretry="load"
+    ></status-panel>
     <view class="container" wx:if="{{activity}}">
       <view class="card">
         <view class="heading">{{activity.title}}</view>
