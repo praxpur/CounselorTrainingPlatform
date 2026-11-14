@@ -8,6 +8,7 @@
         bindretry="load"
       ></status-panel>
       <view class="title" wx:if="{{activity}}">{{activity.title}}</view>
+      <navigator class="card" url="/pages/attendance-manage/attendance-manage?id={{activity.id}}" wx:if="{{activity}}">开放签到 / 签退与查看现场记录 ›</navigator>
       <view class="muted" wx:if="{{activity && !canConfirm}}">
         {{activity.status === 'cancelled' ? '活动已取消，保留历史报名记录' :
         '活动开始后可确认参加'}}

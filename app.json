@@ -19,7 +19,9 @@
     "pages/stastic/people/people",
     "pages/stastic/ranking/ranking",
     "pages/password/password",
-    "pages/user-import/user-import"
+    "pages/user-import/user-import",
+    "pages/attendance/attendance",
+    "pages/attendance-manage/attendance-manage"
   ],
   "window": {
     "navigationBarTextStyle": "black",
@@ -62,5 +64,14 @@
   },
   "renderer": "webview",
   "sitemapLocation": "sitemap.json",
-  "lazyCodeLoading": "requiredComponents"
+  "lazyCodeLoading": "requiredComponents",
+  "permission": {
+    "scope.userLocation": {
+      "desc": "用于活动现场定位签到、签退和管理员选择活动地点"
+    }
+  },
+  "requiredPrivateInfos": [
+    "getLocation",
+    "chooseLocation"
+  ]
 }

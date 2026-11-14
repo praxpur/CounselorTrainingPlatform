@@ -1,0 +1,38 @@
+<view class="page-shell">
+  <navigation-bar title="签到与签退管理" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <status-panel loading="{{loading}}" error-message="{{errorMessage}}" bindretry="load"></status-panel>
+      <view class="card">
+        <picker range="{{phases}}" value="{{phaseIndex}}" data-field="phaseIndex" bindchange="input"><view class="line">类型：{{phases[phaseIndex]}} ›</view></picker>
+        <picker range="{{methods}}" value="{{methodIndex}}" data-field="methodIndex" bindchange="input"><view class="line">验证方式：{{methods[methodIndex]}} ›</view></picker>
+        <view class="field-label">从现在起有效时长（1—240 分钟）</view>
+        <input type="number" value="{{duration}}" data-field="duration" bindinput="input" />
+        <block wx:if="{{methodIndex != 0}}">
+          <button bindtap="chooseLocation">选择活动现场地点</button>
+          <view class="muted">{{placeName || '尚未选择定位中心'}}</view>
+          <view class="field-label">允许范围（10—2000 米）</view>
+          <input type="digit" value="{{radius}}" data-field="radius" bindinput="input" />
+        </block>
+        <view class="muted">重新开放会使该类型的旧二维码立即失效，已有签到记录保留。签退前须先签到。</view>
+        <button class="primary" bindtap="open" loading="{{busy}}" disabled="{{busy}}">开放 / 刷新验证</button>
+      </view>
+      <view class="card" wx:if="{{qrImage}}">
+        <view class="title">现场扫码</view>
+        <image class="qr-image" src="{{qrImage}}" mode="widthFix"></image>
+        <view class="muted">有效至 {{qrExpires}}，过期后请重新开放</view>
+      </view>
+      <view class="card" wx:for="{{sessions}}" wx:key="phase">
+        <view>{{item.phaseLabel}} · {{item.active ? '开放中' : '已截止'}} · {{item.closesText}}</view>
+        <button wx:if="{{item.active}}" data-phase="{{item.phase}}" bindtap="close" disabled="{{busy}}">立即关闭</button>
+      </view>
+      <view class="section-title">现场记录（学时仍需确认参加）</view>
+      <button bindtap="load" disabled="{{loading}}">刷新记录</button>
+      <view class="card" wx:for="{{records}}" wx:key="index">
+        <view>{{item.name}} · {{item.userId}} · {{item.phaseLabel}}</view>
+        <view class="muted">{{item.department}} · {{item.timeText}}</view>
+        <view class="muted" wx:if="{{item.distance !== null}}">距中心 {{item.distance}} 米 · 定位精度 {{item.accuracy}} 米</view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

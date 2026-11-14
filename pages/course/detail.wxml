@@ -22,6 +22,7 @@
         <view class="title">活动介绍</view>
         <view class="line">{{activity.description || '暂无介绍'}}</view>
       </view>
+      <navigator wx:if="{{activity.registered && activity.status !== 'cancelled'}}" class="card" url="/pages/attendance/attendance?id={{activity.id}}">活动签到 / 签退 ›</navigator>
       <button
         class="primary"
         disabled="{{!activity.canRegister || busy}}"

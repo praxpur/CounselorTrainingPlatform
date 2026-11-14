@@ -4,6 +4,45 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 
+test('双重签到从相机扫码并获取 GCJ-02 定位，取消扫码不提交记录', async () => {
+  for (const canceled of [false, true]) {
+    let writes = 0, locations = 0, done = false
+    const { page: attendance } = page('pages/attendance/attendance.js', {
+      guard: () => true, time: () => '时间', error() {},
+      request: async (path, method, body) => {
+        if (method === 'POST') {
+          writes++
+          assert.equal(body.qrText, 'scan-result')
+          assert.equal(body.latitude, 36.65)
+          assert.equal(body.accuracy, 10)
+          done = true
+          return {}
+        }
+        return { sessions: [{ phase: 'in', method: 'both', active: true, closesAt: 1 }], records: done ? [{ phase: 'in', recordedAt: 1 }] : [] }
+      },
+    }, {
+      scanCode: options => {
+        assert.equal(options.onlyFromCamera, true)
+        if (canceled) options.fail()
+        else options.success({ result: 'scan-result' })
+      },
+      getLocation: options => {
+        locations++
+        assert.equal(options.type, 'gcj02')
+        options.success({ latitude: 36.65, longitude: 117, accuracy: 10 })
+      },
+    })
+    attendance.id = 1
+    await attendance.load()
+    const task = attendance.attend({ currentTarget: { dataset: { phase: 'in' } } })
+    await attendance.attend({ currentTarget: { dataset: { phase: 'in' } } })
+    await task
+    assert.equal(writes, canceled ? 0 : 1)
+    assert.equal(locations, canceled ? 0 : 1)
+    assert.equal(attendance.data.busy, false)
+  }
+})
+
 test('批量导入预览不暴露密码，失败保留已完成进度且不盲目重试', async () => {
   const { parseRosterCsv } = require('../utils/roster')
   const csv = '工号,姓名,学院/部门,初始密码\n' + Array.from({ length: 11 }, (_, i) => `000${i},老师,学院,School-Initial-2026`).join('\n')

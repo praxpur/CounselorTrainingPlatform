@@ -1,0 +1,17 @@
+<view class="page-shell">
+  <navigation-bar title="活动签到与签退" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <status-panel loading="{{loading}}" error-message="{{errorMessage}}" bindretry="load"></status-panel>
+      <view class="muted">签到和签退是现场参加记录；学时由管理员确认参加后认定。</view>
+      <view class="card" wx:for="{{sessions}}" wx:key="phase">
+        <view class="title">{{item.phaseLabel}} · {{item.methodLabel}}</view>
+        <view class="muted">有效至 {{item.closesText}}{{item.radius ? ' · 需在指定现场范围内' : ''}}</view>
+        <button class="primary" data-phase="{{item.phase}}" bindtap="attend" loading="{{busy}}" disabled="{{busy || loading || !item.active || item.done}}">{{item.done ? '已完成' : item.active ? '立即' + item.phaseLabel : '尚未开放或已截止'}}</button>
+      </view>
+      <view class="muted" wx:if="{{!loading && !errorMessage && !sessions.length}}">管理员尚未开放签到，请稍后刷新。</view>
+      <button bindtap="load" disabled="{{loading || busy}}">刷新签到状态</button>
+      <view class="card" wx:for="{{records}}" wx:key="phase">{{item.phaseLabel}}：{{item.timeText}}</view>
+    </view>
+  </scroll-view>
+</view>

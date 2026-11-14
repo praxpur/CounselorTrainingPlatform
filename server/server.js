@@ -4,6 +4,7 @@ const { personalRecords, personalAnnual } = require('./personal')
 const { createAuthentication } = require('./auth')
 const { migrateCreditUnits } = require('./credit-unit')
 const { importRoster, resetPassword } = require('./roster')
+const { createAttendance } = require('./attendance')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const pathModule = require('node:path')
@@ -86,6 +87,7 @@ const send = (res, status, value) => {
 }
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex')
 const authentication = createAuthentication(db)
+const attendance = createAttendance(db)
 function body(req) {
   return new Promise((resolve, reject) => {
     const chunks = []
@@ -358,6 +360,24 @@ const server = http.createServer(async (req, res) => {
     const u = requireUser(req)
     if (!['/api/me', '/api/logout'].includes(path) && authentication.mustChange(u.id))
       return send(res, 403, { error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' })
+    const attendanceMatch = path.match(/^\/api\/(admin\/)?activities\/(\d+)\/attendance(?:\/(in|out))?$/)
+    if (attendanceMatch) {
+      const [, management, activityId, phase] = attendanceMatch, id = Number(activityId)
+      if (!Number.isSafeInteger(id) || id <= 0) fail(400, '活动编号无效')
+      if (management) {
+        admin(u)
+        if (method === 'GET' && !phase) return send(res, 200, attendance.report(id))
+        if (method === 'POST' && phase) {
+          const input = await body(req)
+          return send(res, 200, await attendance.open(id, phase, input, u, () => admin(requireUser(req))))
+        }
+        if (method === 'DELETE' && phase) return send(res, 200, attendance.close(id, phase))
+      } else {
+        if (method === 'GET' && !phase) return send(res, 200, attendance.state(id, u))
+        if (method === 'POST' && phase) return send(res, 200, attendance.record(id, phase, await body(req), u))
+      }
+      fail(404, '接口不存在')
+    }
     if (path === '/api/my/records' && method === 'GET') {
       return send(res, 200, personalRecords(db, u.id))
     }

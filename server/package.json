@@ -8,12 +8,13 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test.js frontend.test.js exports.test.js http-boundaries.test.js auth.test.js roster.test.js credit-unit.test.js",
+    "test": "node --test test.js frontend.test.js exports.test.js http-boundaries.test.js auth.test.js roster.test.js credit-unit.test.js attendance.test.js",
     "test:load": "node load-test.js",
     "test:load:cold": "node load-test.js --cold"
   },
   "dependencies": {
-    "exceljs": "^4.4.0"
+    "exceljs": "^4.4.0",
+    "qrcode": "1.5.4"
   },
   "overrides": {
     "uuid": "^11.1.1"
