@@ -124,7 +124,7 @@ function requireUser(req) {
   const user =
     token &&
     get(
-      'SELECT u.* FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>? AND u.enabled=1',
+      'SELECT u.id,u.name,u.department,u.role,u.enabled FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>? AND u.enabled=1',
       hash(token[1]),
       Date.now(),
     )
@@ -272,8 +272,14 @@ function ranking(url) {
 
 const server = http.createServer(async (req, res) => {
   try {
-    const url = new URL(req.url, 'http://localhost'),
-      path = url.pathname,
+    let url
+    try {
+      url = new URL(req.url, 'http://localhost')
+      decodeURI(url.pathname)
+    } catch {
+      fail(400, '请求地址格式错误')
+    }
+    const path = url.pathname,
       method = req.method
     if (path === '/health' && method === 'GET') return send(res, 200, { ok: true })
     if (path === '/fonts/noto-sans-sc-full.woff2' && method === 'GET') {

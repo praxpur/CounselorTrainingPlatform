@@ -34,3 +34,30 @@ test('未发送完的超限请求立即收到 413 并关闭连接，不创建用
   assert.equal(db.prepare('SELECT COUNT(*) n FROM users').get().n, 0)
   assert.equal((await fetch(base + '/health')).status, 200)
 })
+
+test('非法 URL 和非法路径编码返回 400', async () => {
+  for (const path of ['http://[', '/api/%ZZ', '/api/%FF']) {
+    await new Promise((resolve, reject) => {
+      const request = http.get(base, { path }, response => {
+        assert.equal(response.statusCode, 400, path)
+        response.resume()
+        response.on('end', resolve)
+      })
+      request.on('error', reject)
+    })
+  }
+})
+
+test('用户表新增敏感字段后 /api/me 仍只返回公开字段', async () => {
+  db.exec("ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT 'secret'")
+  db.exec("ALTER TABLE users ADD COLUMN openid TEXT DEFAULT 'private-id'")
+  const login = await fetch(base + '/api/auth/dev', {
+    method: 'POST',
+    body: JSON.stringify({ id: 'safe-user', name: '姓名', department: '学院' }),
+  })
+  const { token } = await login.json()
+  const response = await fetch(base + '/api/me', { headers: { authorization: 'Bearer ' + token } })
+  assert.equal(response.status, 200)
+  const user = await response.json()
+  assert.deepEqual(Object.keys(user).sort(), ['department', 'enabled', 'id', 'name', 'role'])
+})
