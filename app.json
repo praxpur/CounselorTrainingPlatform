@@ -17,7 +17,8 @@
     "pages/my-hours/my-hours",
     "pages/stastic/static",
     "pages/stastic/people/people",
-    "pages/stastic/ranking/ranking"
+    "pages/stastic/ranking/ranking",
+    "pages/password/password"
   ],
   "window": {
     "navigationBarTextStyle": "black",

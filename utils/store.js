@@ -47,6 +47,10 @@ function guard() {
 }
 function error(e) {
   wx.showToast({ title: e.message || '操作失败', icon: 'none', duration: 3000 })
+  if (e.code === 'PASSWORD_CHANGE_REQUIRED') {
+    wx.reLaunch({ url: '/pages/password/password' })
+    return
+  }
   if (!wx.getStorageSync(TOKEN_KEY)) wx.reLaunch({ url: '/pages/login/login' })
 }
 function time(value) {

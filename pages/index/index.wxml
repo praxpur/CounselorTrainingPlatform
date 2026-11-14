@@ -11,6 +11,7 @@
         bindretry="onShow"
       ></status-panel>
       <block wx:if="{{!loading && user && user.role === 'admin'}}">
+        <navigator url="/pages/password/password" class="card">修改密码 ›</navigator>
         <school-brand title="管理工作台"></school-brand>
         <view class="campus-hero admin-campus">
           <image

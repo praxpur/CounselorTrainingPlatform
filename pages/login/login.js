@@ -1,34 +1,25 @@
 const api = require('../../utils/store')
 Page({
-  data: { id: '', name: '', department: '', departmentRequired: false, loading: false },
-  input(e) {
-    const field = e.currentTarget.dataset.field
-    if (field === 'id' && e.detail.value !== this.data.id) {
-      this.setData({ id: e.detail.value, department: '', departmentRequired: false })
-      return
-    }
-    this.setData({ [field]: e.detail.value })
+  data: { id: '', password: '', loading: false },
+  input(event) {
+    this.setData({ [event.currentTarget.dataset.field]: event.detail.value })
   },
   async login() {
     if (this.data.loading) return
-    if (!this.data.id.trim() || !this.data.name.trim()) {
-      wx.showToast({ title: '请填写工号和姓名', icon: 'none' })
+    if (!this.data.id.trim() || !this.data.password) {
+      wx.showToast({ title: '请填写工号和密码', icon: 'none' })
       return
     }
     this.setData({ loading: true })
     try {
-      const result = await api.request('/api/auth/dev', 'POST', {
-        id: this.data.id,
-        name: this.data.name,
-        department: this.data.department,
+      const result = await api.request('/api/auth/login', 'POST', {
+        id: this.data.id.trim(), password: this.data.password,
       })
       api.setToken(result.token)
-      wx.reLaunch({ url: '/pages/index/index' })
-    } catch (e) {
-      if (e.code === 'DEPARTMENT_REQUIRED') {
-        this.setData({ departmentRequired: true })
-      }
-      wx.showToast({ title: e.message, icon: 'none', duration: 3000 })
+      this.setData({ password: '' })
+      wx.reLaunch({ url: result.mustChangePassword ? '/pages/password/password' : '/pages/index/index' })
+    } catch (error) {
+      api.error(error)
     } finally {
       this.setData({ loading: false })
     }

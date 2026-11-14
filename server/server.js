@@ -1,6 +1,7 @@
 const http = require('node:http')
 const { sendWorkbook } = require('./exports')
 const { personalRecords, personalAnnual } = require('./personal')
+const { createAuthentication } = require('./auth')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const pathModule = require('node:path')
@@ -81,6 +82,7 @@ const send = (res, status, value) => {
   res.end(JSON.stringify(value))
 }
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex')
+const authentication = createAuthentication(db)
 function body(req) {
   return new Promise((resolve, reject) => {
     const chunks = []
@@ -282,6 +284,14 @@ const server = http.createServer(async (req, res) => {
     const path = url.pathname,
       method = req.method
     if (path === '/health' && method === 'GET') return send(res, 200, { ok: true })
+    if (path === '/api/auth/login' && method === 'POST')
+      return send(res, 200, await authentication.login(await body(req), req.socket.remoteAddress))
+    if (path === '/api/auth/password' && method === 'POST') {
+      const user = requireUser(req)
+      const input = await body(req)
+      const result = await authentication.changePassword(user, input, req.socket.remoteAddress, () => requireUser(req))
+      return send(res, 200, result)
+    }
     if (path === '/fonts/noto-sans-sc-full.woff2' && method === 'GET') {
       if (!fullFontPromise)
         fullFontPromise = fs
@@ -343,6 +353,8 @@ const server = http.createServer(async (req, res) => {
     }
     if (path.startsWith('/api/auth/')) fail(503, '正式身份认证尚未配置')
     const u = requireUser(req)
+    if (!['/api/me', '/api/logout'].includes(path) && authentication.mustChange(u.id))
+      return send(res, 403, { error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' })
     if (path === '/api/my/records' && method === 'GET') {
       return send(res, 200, personalRecords(db, u.id))
     }

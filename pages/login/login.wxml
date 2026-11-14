@@ -15,32 +15,18 @@
         <view class="title">登录培训平台</view>
         <view class="muted">查看培训活动，记录成长历程</view>
         <view class="field-label">工号</view>
-        <input maxlength="40" placeholder="请输入测试工号" data-field="id" bindinput="input" />
-        <view class="field-label">姓名</view>
-        <input maxlength="50" placeholder="请输入姓名" data-field="name" bindinput="input" />
-        <block wx:if="{{departmentRequired}}">
-          <view class="field-label">
-            <text class="required-mark">*</text>
-            学院 / 部门（首次填写）
-          </view>
-          <input
-            maxlength="100"
-            placeholder="首次登录请补充学院或部门"
-            value="{{department}}"
-            data-field="department"
-            bindinput="input"
-          />
-          <view class="muted">保存后，再次登录无需重复填写。</view>
-        </block>
+        <input maxlength="40" placeholder="请输入学校导入的工号" data-field="id" bindinput="input" />
+        <view class="field-label">密码</view>
+        <input password maxlength="128" value="{{password}}" placeholder="请输入密码" data-field="password" bindinput="input" />
         <button
           class="primary"
           loading="{{loading}}"
-          disabled="{{loading || !id || !name || (departmentRequired && !department)}}"
+          disabled="{{loading || !id || !password}}"
           bindtap="login"
         >
           登录
         </button>
-        <view class="login-hint">开发测试环境 · 当前登录用于功能验证</view>
+        <view class="login-hint">首次登录使用学校发放的初始密码；忘记密码请联系管理员。</view>
       </view>
       <view class="school-footer">济南大学学生工作处</view>
     </view>

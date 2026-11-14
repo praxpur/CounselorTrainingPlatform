@@ -4,6 +4,41 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 
+test('账号密码登录后首次强制改密，改密成功保存新会话', async () => {
+  for (const mustChangePassword of [true, false]) {
+    let target, saved
+    const { page: login } = page('pages/login/login.js', {
+      request: async (path, method, body) => {
+        assert.equal(path, '/api/auth/login')
+        assert.equal(body.id, '00001')
+        assert.equal(body.password, 'Initial-Password-2026')
+        return { token: 'new-token', mustChangePassword }
+      },
+      setToken: value => { saved = value }, error() {},
+    }, { reLaunch: value => { target = value.url } })
+    login.data.id = ' 00001 '
+    login.data.password = 'Initial-Password-2026'
+    await login.login()
+    assert.equal(saved, 'new-token')
+    assert.equal(target, mustChangePassword ? '/pages/password/password' : '/pages/index/index')
+    assert.equal(login.data.password, '')
+  }
+  let calls = 0, saved
+  const { page: password } = page('pages/password/password.js', {
+    request: async () => { calls++; return { token: 'rotated' } },
+    setToken: value => { saved = value }, error() {},
+  }, { reLaunch() {} })
+  password.data.oldPassword = 'Initial-Password-2026'
+  password.data.newPassword = 'Personal-Password-2026'
+  password.data.confirmPassword = 'different'
+  await password.save()
+  assert.equal(calls, 0)
+  password.data.confirmPassword = password.data.newPassword
+  await password.save()
+  assert.equal(saved, 'rotated')
+  assert.equal(password.data.oldPassword, '')
+})
+
 test('小程序相对 require 均指向可编译的 JavaScript 模块', () => {
   const root = path.join(__dirname, '..')
   function inspect(directory) {
