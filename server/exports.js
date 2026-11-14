@@ -18,6 +18,8 @@ function addSheet(workbook, name, columns, rows) {
       cell.font = { name: 'Noto Sans CJK SC', size: 11 }
       cell.alignment = { vertical: 'top', wrapText: true }
       if (typeof cell.value === 'string') {
+        // XLSX 字符串单元格不会作为公式执行；显式文本格式也保留前导零。
+        cell.numFmt = '@'
         const width = sheet.getColumn(cell.col).width || 20
         const textWidth = [...cell.value].reduce(
           (sum, char) => sum + (char.charCodeAt(0) > 255 ? 2 : 1),
