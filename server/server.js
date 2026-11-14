@@ -85,20 +85,25 @@ function body(req) {
   return new Promise((resolve, reject) => {
     const chunks = []
     let bytes = 0
-    let tooLarge = false
+    const tooLarge = () => {
+      chunks.length = 0
+      req.pause()
+      reject(Object.assign(new Error('请求过大'), { status: 413 }))
+    }
+    const length = req.headers['content-length']
+    if (length !== undefined && Number(length) > 16384) {
+      tooLarge()
+      return
+    }
     req.on('data', (chunk) => {
       bytes += chunk.length
       if (bytes > 16384) {
-        tooLarge = true
+        tooLarge()
         return
       }
       chunks.push(chunk)
     })
     req.on('end', () => {
-      if (tooLarge) {
-        reject(Object.assign(new Error('请求过大'), { status: 413 }))
-        return
-      }
       try {
         const text = Buffer.concat(chunks).toString('utf8')
         const value = text ? JSON.parse(text) : {}
@@ -111,6 +116,7 @@ function body(req) {
       }
     })
     req.on('error', reject)
+    req.on('aborted', () => reject(Object.assign(new Error('请求已中断'), { status: 400 })))
   })
 }
 function requireUser(req) {
@@ -836,7 +842,12 @@ const server = http.createServer(async (req, res) => {
     fail(404, '接口不存在')
   } catch (e) {
     if (!e.status) console.error(e)
-    if (!res.headersSent)
+    if (e.status === 413) {
+      // 无需等待客户端发送完请求体；响应发出后由 HTTP 层关闭连接。
+      res.shouldKeepAlive = false
+      res.setHeader('Connection', 'close')
+    }
+    if (!res.headersSent && !res.destroyed)
       send(res, e.status || 500, { error: e.status ? e.message : '服务器内部错误' })
   }
 })
