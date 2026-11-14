@@ -67,6 +67,27 @@ test('页面交互绑定都有对应的处理函数', () => {
   }
 })
 
+test('统计入口及子页已注册，首页统计导航均指向有效页面', async () => {
+  const root = path.join(__dirname, '..')
+  const routes = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8')).pages
+  for (const route of ['pages/stastic/static', 'pages/stastic/people/people', 'pages/stastic/ranking/ranking']) {
+    assert.ok(routes.includes(route), route)
+  }
+  for (const route of ['pages/index/index', 'pages/stastic/static']) {
+    const template = fs.readFileSync(path.join(root, route + '.wxml'), 'utf8')
+    for (const match of template.matchAll(/<navigator\b[^>]*\burl="\/([^"?]+)"/g)) {
+      assert.ok(routes.includes(match[1]), route + ': ' + match[1])
+    }
+  }
+  for (const role of ['admin', 'counselor']) {
+    const { page: hub } = page('pages/stastic/static.js', {
+      guard: () => true, request: async () => ({ role }), error() {},
+    })
+    await hub.load()
+    assert.equal(hub.data.authorized, role === 'admin')
+  }
+})
+
 test('导航组件返回失败可回首页，并提供有效的首页处理方法', () => {
   let config
   let target
@@ -165,7 +186,7 @@ test('年度统计快速切换时旧响应不覆盖新年份，失败后不能�
     error() {},
     request: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
   }
-  const { page: ranking } = page('pages/ranking/ranking.js', api)
+  const { page: ranking } = page('pages/stastic/ranking/ranking.js', api)
   ranking.changeYear({ detail: { value: '25' } })
   ranking.changeYear({ detail: { value: '24' } })
   pending[1].resolve({ year: 2024, rows: [{ id: 'new' }] })

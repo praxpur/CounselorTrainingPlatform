@@ -14,7 +14,10 @@
     "pages/reviews/reviews",
     "pages/ranking/ranking",
     "pages/users/users",
-    "pages/my-hours/my-hours"
+    "pages/my-hours/my-hours",
+    "pages/stastic/static",
+    "pages/stastic/people/people",
+    "pages/stastic/ranking/ranking"
   ],
   "window": {
     "navigationBarTextStyle": "black",

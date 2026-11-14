@@ -1,0 +1,49 @@
+<view class="page-shell">
+  <navigation-bar title="年度学时排名" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="load"
+      ></status-panel>
+      <view class="ranking-toolbar">
+        <picker
+          class="year-picker"
+          mode="selector"
+          range="{{years}}"
+          value="{{yearIndex}}"
+          bindchange="changeYear"
+          disabled="{{loading || exporting}}"
+        >
+          <view class="year-label">统计年度</view>
+          <view class="year-value">
+            {{year}}
+            <text class="year-unit">年</text>
+            <text class="year-arrow">⌄</text>
+          </view>
+        </picker>
+        <button
+          class="button-mini export-button"
+          size="mini"
+          bindtap="exportData"
+          loading="{{exporting}}"
+          disabled="{{loading || exporting || loadedYear !== year}}"
+        >
+          导出 Excel
+        </button>
+      </view>
+      <view class="muted">
+        按管理员确认参加的活动统计，培训经历不重复计时；学时相同并列。单位：分钟。
+      </view>
+      <view class="card" wx:for="{{rows}}" wx:key="id">
+        <view class="title">第 {{item.rank}} 名　{{item.name}}</view>
+        <view class="muted">{{item.department}} · 工号 {{item.id}}</view>
+        <view class="line">确认参加 {{item.eventCount}} 次 · {{item.totalMinutes}} 分钟</view>
+      </view>
+      <view class="empty" wx:if="{{!loading && !errorMessage && !rows.length}}">
+        该年度暂无人员统计
+      </view>
+    </view>
+  </scroll-view>
+</view>

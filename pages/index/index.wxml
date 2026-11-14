@@ -37,7 +37,7 @@
             </view>
             <view class="arrow">›</view>
           </navigator>
-          <navigator class="admin-item" url="/pages/people/people">
+          <navigator class="admin-item" url="/pages/stastic/people/people">
             <view class="admin-icon green">
               <image
                 class="admin-icon-image"
@@ -65,7 +65,7 @@
             </view>
             <view class="arrow">›</view>
           </navigator>
-          <navigator class="admin-item" url="/pages/ranking/ranking">
+          <navigator class="admin-item" url="/pages/stastic/static">
             <view class="admin-icon orange">
               <image
                 class="admin-icon-image"

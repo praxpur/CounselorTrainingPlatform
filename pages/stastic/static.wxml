@@ -1,0 +1,18 @@
+<view class="page-shell">
+  <navigation-bar title="数据统计" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <status-panel loading="{{loading}}" error-message="{{errorMessage}}" bindretry="load"></status-panel>
+      <block wx:if="{{authorized}}">
+        <navigator class="card" url="/pages/stastic/ranking/ranking">
+          <view class="title">年度学时排名</view>
+          <view class="muted">按年度查看认定学时与排名，导出 Excel</view>
+        </navigator>
+        <navigator class="card" url="/pages/stastic/people/people">
+          <view class="title">人员参加情况</view>
+          <view class="muted">查询人员报名与参加记录，导出汇总和明细</view>
+        </navigator>
+      </block>
+    </view>
+  </scroll-view>
+</view>
