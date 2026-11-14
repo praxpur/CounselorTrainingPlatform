@@ -18,7 +18,8 @@
     "pages/stastic/static",
     "pages/stastic/people/people",
     "pages/stastic/ranking/ranking",
-    "pages/password/password"
+    "pages/password/password",
+    "pages/user-import/user-import"
   ],
   "window": {
     "navigationBarTextStyle": "black",

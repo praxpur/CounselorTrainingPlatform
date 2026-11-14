@@ -1,5 +1,5 @@
 const api = require('../../utils/store')
-const empty = () => ({ id: '', name: '', department: '' })
+const empty = () => ({ id: '', name: '', department: '', initialPassword: '' })
 Page({
   data: {
     loading: false,
@@ -7,6 +7,7 @@ Page({
     users: [],
     form: empty(),
     editing: false,
+    resetting: false,
     query: '',
     busy: false,
     formVisible: false,
@@ -16,7 +17,7 @@ Page({
     this.load()
   },
   create() {
-    this.showEditor({ editing: false, form: empty(), formVisible: true })
+    this.showEditor({ editing: false, resetting: false, form: empty(), formVisible: true })
   },
   showEditor(value) {
     this.setData({ ...value, scrollTarget: '' }, () =>
@@ -48,12 +49,20 @@ Page({
     if (u)
       this.showEditor({
         editing: true,
+        resetting: false,
         formVisible: true,
-        form: { id: u.id, name: u.name, department: u.department },
+        form: { id: u.id, name: u.name, department: u.department, initialPassword: '' },
       })
   },
   reset() {
-    this.setData({ editing: false, form: empty(), formVisible: false, scrollTarget: '' })
+    this.setData({ editing: false, resetting: false, form: empty(), formVisible: false, scrollTarget: '' })
+  },
+  resetAccount(event) {
+    const user = this.data.users.find(value => value.id === event.currentTarget.dataset.id)
+    if (user && !this.data.busy) this.showEditor({
+      editing: true, resetting: true, formVisible: true,
+      form: { id: user.id, name: user.name, department: user.department, initialPassword: '' },
+    })
   },
   async save() {
     if (this.data.busy) return
@@ -64,7 +73,11 @@ Page({
     }
     this.setData({ busy: true })
     try {
-      if (this.data.editing) {
+      if ((!this.data.editing || this.data.resetting) && (f.initialPassword.length < 12 || f.initialPassword.length > 128))
+        throw new Error('初始密码须为 12—128 位')
+      if (this.data.resetting) {
+        await api.request('/api/admin/users/' + encodeURIComponent(f.id) + '/password', 'POST', { initialPassword: f.initialPassword })
+      } else if (this.data.editing) {
         await api.request('/api/admin/users/' + encodeURIComponent(f.id), 'PUT', {
           name: f.name,
           department: f.department,

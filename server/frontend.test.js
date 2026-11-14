@@ -4,6 +4,32 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 
+test('批量导入预览不暴露密码，失败保留已完成进度且不盲目重试', async () => {
+  const { parseRosterCsv } = require('../utils/roster')
+  const csv = '工号,姓名,学院/部门,初始密码\n' + Array.from({ length: 11 }, (_, i) => `000${i},老师,学院,School-Initial-2026`).join('\n')
+  let calls = 0
+  const { page: importer } = page('pages/user-import/user-import.js', {
+    parseRosterCsv,
+    error() {},
+    request: async (url, method, body) => {
+      calls++
+      if (calls === 2) throw new Error('断网')
+      return { imported: body.rows.length }
+    },
+  }, {
+    chooseMessageFile: options => options.success({ tempFiles: [{ path: 'file', name: '名单.csv', size: csv.length }] }),
+    getFileSystemManager: () => ({ readFile: options => options.success({ data: csv }) }),
+  })
+  importer.chooseFile()
+  assert.equal(importer.data.rows.length, 11)
+  assert.ok(!JSON.stringify(importer.data).includes('School-Initial-2026'))
+  await importer.importRows()
+  assert.equal(importer.data.imported, 10)
+  assert.match(importer.data.errorMessage, /已完成 10 人/)
+  await importer.importRows()
+  assert.equal(calls, 2)
+})
+
 test('账号密码登录后首次强制改密，改密成功保存新会话', async () => {
   for (const mustChangePassword of [true, false]) {
     let target, saved

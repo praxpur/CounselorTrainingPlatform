@@ -2,6 +2,7 @@ const http = require('node:http')
 const { sendWorkbook } = require('./exports')
 const { personalRecords, personalAnnual } = require('./personal')
 const { createAuthentication } = require('./auth')
+const { importRoster, resetPassword } = require('./roster')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const pathModule = require('node:path')
@@ -434,8 +435,12 @@ const server = http.createServer(async (req, res) => {
     }
     if (path === '/api/admin/users' && method === 'POST') {
       admin(u)
-      const b = await body(req),
-        id = String(b.id || '').trim(),
+      const b = await body(req)
+      if (b.initialPassword !== undefined || process.env.NODE_ENV === 'production') {
+        await importRoster(db, [{ ...b, role: 'counselor' }], { authorize: () => admin(requireUser(req)) })
+        return send(res, 201, { id: b.id, name: b.name, department: b.department, enabled: 1 })
+      }
+      const id = String(b.id || '').trim(),
         name = String(b.name || '').trim(),
         department = String(b.department || '').trim()
       if (
@@ -455,6 +460,22 @@ const server = http.createServer(async (req, res) => {
         department,
       )
       return send(res, 201, { id, name, department, enabled: 1 })
+    }
+    if (path === '/api/admin/users/import' && method === 'POST') {
+      admin(u)
+      const b = await body(req)
+      if (!Array.isArray(b.rows) || b.rows.length > 50) fail(400, '每批最多导入 50 人')
+      return send(res, 201, await importRoster(db, b.rows, { authorize: () => admin(requireUser(req)) }))
+    }
+    const resetMatch = path.match(/^\/api\/admin\/users\/([a-zA-Z0-9_-]{1,40})\/password$/)
+    if (resetMatch && method === 'POST') {
+      const authorize = () => {
+        admin(requireUser(req))
+        if (!get("SELECT id FROM users WHERE id=? AND role='counselor'", resetMatch[1])) fail(404, '辅导员不存在')
+      }
+      authorize()
+      const b = await body(req)
+      return send(res, 200, await resetPassword(db, resetMatch[1], b.initialPassword, authorize))
     }
     const userMatch = path.match(/^\/api\/admin\/users\/([a-zA-Z0-9_-]{1,40})$/)
     if (userMatch && method === 'PUT') {

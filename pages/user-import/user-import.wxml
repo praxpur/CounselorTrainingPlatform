@@ -1,0 +1,20 @@
+<view class="page-shell">
+  <navigation-bar title="批量导入名单" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <view class="card">
+        <view class="title">学校名单 CSV</view>
+        <view class="muted">使用 UTF-8 CSV，表头依次为：工号,姓名,学院/部门,初始密码。工号请使用文本格式，密码至少 12 位。每个文件最多 500 人。</view>
+        <view class="muted">每批导入 10 人；已有密码的账号不会覆盖，已完成的批次会保留。管理员账号由服务器运维人员导入。</view>
+        <button bindtap="chooseFile" disabled="{{busy}}">选择 CSV 文件</button>
+        <view wx:if="{{filename}}">{{filename}} · 共 {{rows.length}} 人 · 已导入 {{imported}} 人</view>
+        <view class="muted" wx:if="{{errorMessage}}">{{errorMessage}}</view>
+        <button class="primary" bindtap="importRows" loading="{{busy}}" disabled="{{busy || !rows.length || imported === rows.length || errorMessage}}">确认导入名单</button>
+      </view>
+      <view class="card" wx:for="{{rows}}" wx:key="id">
+        <view>{{item.id}} · {{item.name}}</view>
+        <view class="muted">{{item.department}}</view>
+      </view>
+    </view>
+  </scroll-view>
+</view>

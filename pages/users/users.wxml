@@ -8,11 +8,12 @@
         bindretry="load"
       ></status-panel>
       <view class="page-toolbar">
+        <navigator url="/pages/user-import/user-import">批量导入名单 ›</navigator>
         <view class="title">辅导员名单</view>
         <button size="mini" class="button-mini primary" bindtap="create">新增用户</button>
       </view>
       <view class="card" wx:if="{{formVisible}}" id="user-editor">
-        <view class="title">{{editing ? '编辑辅导员' : '新增辅导员'}}</view>
+        <view class="title">{{resetting ? '重置初始密码' : editing ? '编辑辅导员' : '新增辅导员'}}</view>
         <view class="muted">工号保存后不可修改；停用用户会保留报名记录。</view>
         <input
           maxlength="40"
@@ -25,6 +26,7 @@
         <input
           maxlength="50"
           placeholder="姓名"
+          disabled="{{resetting}}"
           value="{{form.name}}"
           data-field="name"
           bindinput="input"
@@ -32,12 +34,17 @@
         <input
           maxlength="100"
           placeholder="学院 / 部门"
+          disabled="{{resetting}}"
           value="{{form.department}}"
           data-field="department"
           bindinput="input"
         />
+        <block wx:if="{{!editing || resetting}}">
+          <input password maxlength="128" placeholder="初始密码（12—128 位）" value="{{form.initialPassword}}" data-field="initialPassword" bindinput="input" />
+          <view class="muted">首次登录须修改初始密码；重置将撤销所有旧会话。</view>
+        </block>
         <button class="primary" bindtap="save" loading="{{busy}}">
-          {{editing ? '保存修改' : '添加用户'}}
+          {{resetting ? '确认重置密码' : editing ? '保存修改' : '添加用户'}}
         </button>
         <button bindtap="reset">取消</button>
       </view>
@@ -62,6 +69,7 @@
         <view class="muted">工号：{{item.id}} · {{item.department}}</view>
         <view class="actions">
           <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="edit">编辑</button>
+          <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="resetAccount">重置密码</button>
           <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="toggle">
             {{item.enabled ? '停用' : '启用'}}
           </button>
