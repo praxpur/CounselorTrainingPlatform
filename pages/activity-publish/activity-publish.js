@@ -25,7 +25,7 @@ Page({
       endDate: '',
       endTime: '',
       capacity: '',
-      creditMinutes: '',
+      creditHours: '',
     },
   },
   onLoad(options) {
@@ -57,7 +57,7 @@ Page({
           endDate,
           endTime,
           capacity: activity.capacity === null ? '' : String(activity.capacity),
-          creditMinutes: String(activity.creditMinutes),
+          creditHours: String(activity.creditHours),
         },
       })
     } catch (error) {
@@ -82,7 +82,7 @@ Page({
       !form.startTime ||
       !form.endDate ||
       !form.endTime ||
-      form.creditMinutes === ''
+      form.creditHours === ''
     ) {
       wx.showToast({ title: '请填写标星号的必填项', icon: 'none' })
       return
@@ -94,11 +94,12 @@ Page({
       return
     }
     if (
-      !Number.isInteger(Number(form.creditMinutes)) ||
-      Number(form.creditMinutes) < 0 ||
-      Number(form.creditMinutes) > 60000
+      !Number.isFinite(Number(form.creditHours)) ||
+      Math.abs(Number(form.creditHours) * 100 - Math.round(Number(form.creditHours) * 100)) > 1e-7 ||
+      Number(form.creditHours) < 0 ||
+      Number(form.creditHours) > 60000
     ) {
-      wx.showToast({ title: '学时须为 0—60000 的整数分钟', icon: 'none' })
+      wx.showToast({ title: '学时须为 0—60000，最多两位小数', icon: 'none' })
       return
     }
     if (
@@ -122,7 +123,7 @@ Page({
           startsAt: form.startDate + 'T' + form.startTime + ':00+08:00',
           endsAt: form.endDate + 'T' + form.endTime + ':00+08:00',
           capacity: form.capacity.trim() === '' ? null : Number(form.capacity),
-          creditMinutes: Number(form.creditMinutes),
+          creditHours: Number(form.creditHours),
         },
       )
       this.saved = true

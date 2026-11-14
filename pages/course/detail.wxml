@@ -11,7 +11,7 @@
         <view class="heading">{{activity.title}}</view>
         <view class="line">时间：{{activity.startsText}} 至 {{activity.endsText}}</view>
         <view class="line">地点：{{activity.locationText}}</view>
-        <view class="line">活动学时：{{activity.creditMinutes}} 分钟</view>
+        <view class="line">活动学时：{{activity.creditHours}} 学时</view>
         <view class="line">报名：{{activity.registeredCount}} / {{activity.capacityText}}</view>
         <view class="line">
           状态：{{activity.status === 'cancelled' ? '已取消' : activity.confirmedAt ? '已确认参加' :

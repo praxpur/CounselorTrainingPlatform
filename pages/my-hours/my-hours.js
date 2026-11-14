@@ -30,12 +30,12 @@ Page({
     try {
       const report = await api.request('/api/my/annual?year=' + this.data.year)
       if (this.requestId !== requestId) return
-      const max = Math.max(1, ...report.months.map((month) => month.minutes))
+      const max = Math.max(1, ...report.months.map((month) => month.hours))
       this.setData({
         report,
         months: report.months.map((month) => ({
           ...month,
-          width: Math.round((month.minutes / max) * 100),
+          width: Math.round((month.hours / max) * 100),
         })),
         records: report.records.map((record) => ({
           ...record,

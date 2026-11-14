@@ -4,8 +4,8 @@ function personalRecords(db, userId) {
     .prepare(
       `
     SELECT a.id,a.title,a.location,a.status,a.starts_at startsAt,a.ends_at endsAt,
-      a.credit_minutes creditMinutes,r.registered_at registeredAt,r.confirmed_at confirmedAt,
-      r.credited_minutes creditedMinutes,e.id experienceId,e.description experience,
+      a.credit_hours creditHours,r.registered_at registeredAt,r.confirmed_at confirmedAt,
+      r.credited_hours creditedHours,e.id experienceId,e.description experience,
       e.status experienceStatus,e.review_note reviewNote,e.reviewed_at reviewedAt
     FROM registrations r JOIN activities a ON a.id=r.activity_id
     LEFT JOIN experiences e ON e.id=(
@@ -38,7 +38,7 @@ function personalRecords(db, userId) {
           unsubmitted: '未提交经历',
           cancelled: '活动已取消',
         }[reviewStatus],
-        recognizedMinutes: reviewStatus === 'approved' ? record.creditedMinutes : 0,
+        recognizedHours: reviewStatus === 'approved' ? record.creditedHours : 0,
         canSubmit:
           (reviewStatus === 'unsubmitted' || reviewStatus === 'rejected') &&
           record.startsAt <= Date.now(),
@@ -50,16 +50,16 @@ function personalAnnual(db, userId, year) {
   const start = Date.parse(year + '-01-01T00:00:00+08:00')
   const end = Date.parse(year + 1 + '-01-01T00:00:00+08:00')
   const records = personalRecords(db, userId).filter((r) => r.startsAt >= start && r.startsAt < end)
-  const months = Array.from({ length: 12 }, (_, index) => ({ month: index + 1, minutes: 0 }))
+  const months = Array.from({ length: 12 }, (_, index) => ({ month: index + 1, hours: 0 }))
   for (const record of records) {
     const month = new Date(record.startsAt + 8 * 3600000).getUTCMonth()
-    months[month].minutes += record.recognizedMinutes
+    months[month].hours = Math.round((months[month].hours + record.recognizedHours) * 100) / 100
   }
   return {
     year,
     records,
     months,
-    totalMinutes: records.reduce((sum, r) => sum + r.recognizedMinutes, 0),
+    totalHours: Math.round(records.reduce((sum, r) => sum + r.recognizedHours, 0) * 100) / 100,
     activityCount: records.length,
     approvedCount: records.filter((r) => r.reviewStatus === 'approved').length,
     pendingCount: records.filter((r) => ['pending', 'unsubmitted'].includes(r.reviewStatus)).length,

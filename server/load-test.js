@@ -23,7 +23,7 @@ for (let i = 0; i < 500; i++) {
   tokens.push(token)
 }
 db.prepare(
-  "INSERT INTO activities(id,title,description,location,starts_at,ends_at,capacity,credit_minutes,created_at) VALUES(1,'并发测试','','',?,?,125,60,?)",
+  "INSERT INTO activities(id,title,description,location,starts_at,ends_at,capacity,credit_hours,created_at) VALUES(1,'并发测试','','',?,?,125,60,?)",
 ).run(now + 3600000, now + 7200000, now)
 const agent = new http.Agent({
   keepAlive: true,

@@ -67,13 +67,13 @@
         </view>
         <view class="field-label">
           <text class="required-mark">*</text>
-          活动学时（分钟）
+          活动学时
         </view>
         <input
-          type="number"
-          placeholder="请输入统一认定的学时分钟数"
-          value="{{form.creditMinutes}}"
-          data-field="creditMinutes"
+          type="digit"
+          placeholder="请输入统一认定的学时数"
+          value="{{form.creditHours}}"
+          data-field="creditHours"
           bindinput="input"
         />
         <view class="field-label">

@@ -11,10 +11,10 @@ test('导出保留公式样式文本和前导零，日期与数值保留类型',
     name: '文本测试',
     columns: [
       { header: '文本', key: 'text', width: 30 },
-      { header: '学时', key: 'minutes', width: 12 },
+      { header: '学时', key: 'hours', width: 12 },
       { header: '日期', key: 'date', width: 24, style: { numFmt: 'yyyy-mm-dd' } },
     ],
-    rows: texts.map(text => ({ text, minutes: 60, date })),
+    rows: texts.map(text => ({ text, hours: 60, date })),
   }])
   const workbook = new ExcelJS.Workbook()
   await workbook.xlsx.load(buffer)

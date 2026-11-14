@@ -34,12 +34,12 @@
         </button>
       </view>
       <view class="muted">
-        按管理员确认参加的活动统计，培训经历不重复计时；学时相同并列。单位：分钟。
+        按管理员确认参加的活动统计，培训经历不重复计时；学时相同并列。单位：学时。
       </view>
       <view class="card" wx:for="{{rows}}" wx:key="id">
         <view class="title">第 {{item.rank}} 名　{{item.name}}</view>
         <view class="muted">{{item.department}} · 工号 {{item.id}}</view>
-        <view class="line">确认参加 {{item.eventCount}} 次 · {{item.totalMinutes}} 分钟</view>
+        <view class="line">确认参加 {{item.eventCount}} 次 · {{item.totalHours}} 学时</view>
       </view>
       <view class="empty" wx:if="{{!loading && !errorMessage && !rows.length}}">
         该年度暂无人员统计

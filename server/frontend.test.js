@@ -196,7 +196,7 @@ test('编辑页加载前不能误发布，加载后使用北京时间且防止�
         startsAt: Date.parse('2026-11-11T08:30:00+08:00'),
         endsAt: Date.parse('2026-11-11T10:30:00+08:00'),
         capacity: null,
-        creditMinutes: 60,
+        creditHours: 60,
       }
     },
   }

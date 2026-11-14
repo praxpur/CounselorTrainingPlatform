@@ -32,8 +32,8 @@
       <block wx:if="{{report}}">
         <view class="stat-grid">
           <view class="stat-card">
-            <view class="muted">认定学时（分钟）</view>
-            <view class="stat-number">{{report.totalMinutes}}</view>
+            <view class="muted">认定学时</view>
+            <view class="stat-number">{{report.totalHours}}</view>
           </view>
           <view class="stat-card">
             <view class="muted">审核通过活动</view>
@@ -50,13 +50,13 @@
         </view>
         <view class="card">
           <view class="title">月度认定学时</view>
-          <view class="muted">按活动开始月份统计，单位：分钟</view>
+          <view class="muted">按活动开始月份统计，单位：学时</view>
           <view class="month-row" wx:for="{{months}}" wx:key="month">
             <text class="month-label">{{item.month}}月</text>
             <view class="month-track">
               <view class="month-fill" style="width: {{item.width}}%;"></view>
             </view>
-            <text class="month-value">{{item.minutes}}</text>
+            <text class="month-value">{{item.hours}}</text>
           </view>
         </view>
         <view class="section-title">年度活动明细</view>
@@ -65,7 +65,7 @@
           <view class="title">{{item.title}}</view>
           <view class="muted">{{item.startsText}} · {{item.reviewLabel}}</view>
           <view class="line">
-            认定 {{item.recognizedMinutes}} 分钟 / 活动 {{item.creditMinutes}} 分钟
+            认定 {{item.recognizedHours}} 学时 / 活动 {{item.creditHours}} 学时
           </view>
           <view class="muted" wx:if="{{item.reviewNote}}">审核意见：{{item.reviewNote}}</view>
         </view>

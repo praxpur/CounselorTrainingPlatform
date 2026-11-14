@@ -138,7 +138,7 @@ test('活动管理、权限和并发报名', async () => {
     startsAt: new Date(Date.now() + 86400000).toISOString(),
     endsAt: new Date(Date.now() + 90000000).toISOString(),
     capacity: 10,
-    creditMinutes: 60,
+    creditHours: 60,
   }
   const created = await call('/api/admin/activities', 'POST', event, admin)
   assert.equal(created.status, 201)
@@ -164,7 +164,7 @@ test('活动管理、权限和并发报名', async () => {
   )
   const year = new Date(Date.parse(event.startsAt) + 8 * 3600000).getUTCFullYear()
   let rank = await call('/api/admin/ranking?year=' + year, 'GET', null, admin)
-  assert.equal(rank.body.rows.find((x) => x.id === who).totalMinutes, 0)
+  assert.equal(rank.body.rows.find((x) => x.id === who).totalHours, 0)
   assert.equal(
     (await call('/api/admin/activities/' + id + '/confirm', 'POST', { userId: who }, user)).status,
     403,
@@ -220,7 +220,7 @@ test('活动管理、权限和并发报名', async () => {
       await call(
         '/api/admin/experiences/' + submitted.body.id + '/review',
         'POST',
-        { status: 'approved', creditMinutes: 500 },
+        { status: 'approved', creditHours: 500 },
         admin,
       )
     ).status,
@@ -242,14 +242,14 @@ test('活动管理、权限和并发报名', async () => {
     409,
   )
   rank = await call('/api/admin/ranking?year=' + pastYear, 'GET', null, admin)
-  assert.equal(rank.body.rows.find((x) => x.id === who).totalMinutes, 60)
+  assert.equal(rank.body.rows.find((x) => x.id === who).totalHours, 60)
   assert.equal(rank.body.rows.find((x) => x.id === who).eventCount, 1)
   const personalReport = await call('/api/my/annual?year=' + pastYear, 'GET', null, repeatToken)
-  assert.equal(personalReport.body.totalMinutes, 60)
+  assert.equal(personalReport.body.totalHours, 60)
   assert.equal(personalReport.body.approvedCount, 1)
   assert.equal(personalReport.body.records.length, 1)
   assert.equal(
-    personalReport.body.months.reduce((sum, month) => sum + month.minutes, 0),
+    personalReport.body.months.reduce((sum, month) => sum + month.hours, 0),
     60,
   )
   assert.equal(personalReport.body.records[0].reviewStatus, 'approved')
@@ -354,14 +354,14 @@ test('活动管理、权限和并发报名', async () => {
   )
   assert.equal((await call('/api/admin/activities/' + id, 'DELETE', null, admin)).status, 200)
   const cancelledPersonal = await call('/api/my/annual?year=' + pastYear, 'GET', null, repeatToken)
-  assert.equal(cancelledPersonal.body.totalMinutes, 0)
+  assert.equal(cancelledPersonal.body.totalHours, 0)
   assert.equal(cancelledPersonal.body.records[0].reviewStatus, 'cancelled')
   assert.equal(
     (await call('/api/activities', 'GET', null, user)).body.some((activity) => activity.id === id),
     false,
   )
   rank = await call('/api/admin/ranking?year=' + pastYear, 'GET', null, admin)
-  assert.equal(rank.body.rows.find((x) => x.id === who).totalMinutes, 0)
+  assert.equal(rank.body.rows.find((x) => x.id === who).totalHours, 0)
   assert.equal((await call('/api/activities/' + id + '/register', 'POST', {}, user)).status, 409)
   assert.equal(
     (await call('/api/admin/activities/' + id + '/attendees', 'GET', null, admin)).body.length,
@@ -371,7 +371,7 @@ test('活动管理、权限和并发报名', async () => {
     title: '可选项留空的活动',
     startsAt: event.startsAt,
     endsAt: event.endsAt,
-    creditMinutes: 30,
+    creditHours: 30,
   }
   const optionalResult = await call('/api/admin/activities', 'POST', optionalEvent, admin)
   assert.equal(optionalResult.status, 201)
@@ -419,8 +419,8 @@ test('活动管理、权限和并发报名', async () => {
     { capacity: -1 },
     { capacity: 1.5 },
     { title: '' },
-    { creditMinutes: null },
-    { creditMinutes: false },
+    { creditHours: null },
+    { creditHours: false },
     { capacity: true },
     { startsAt: '2026-02-30T10:00:00+08:00' },
     { startsAt: '2026-11-11T24:00:00+08:00' },
@@ -478,17 +478,17 @@ test('活动管理、权限和并发报名', async () => {
     const start = Date.parse(date)
     const row = db
       .prepare(
-        "INSERT INTO activities(title,description,location,starts_at,ends_at,capacity,credit_minutes,created_at) VALUES('跨年测试','','',?,?,0,45,?)",
+        "INSERT INTO activities(title,description,location,starts_at,ends_at,capacity,credit_hours,created_at) VALUES('跨年测试','','',?,?,0,45,?)",
       )
       .run(start, start + 3600000, Date.now())
     db.prepare(
-      'INSERT INTO registrations(activity_id,user_id,registered_at,confirmed_at,credited_minutes) VALUES(?,?,?,?,45)',
+      'INSERT INTO registrations(activity_id,user_id,registered_at,confirmed_at,credited_hours) VALUES(?,?,?,?,45)',
     ).run(Number(row.lastInsertRowid), 'staff001', start, start + 3600000)
   }
   const boundaryReport = personalAnnual(db, 'staff001', 2025)
   assert.equal(boundaryReport.records.length, 1)
-  assert.equal(boundaryReport.totalMinutes, 45)
-  assert.equal(boundaryReport.months[0].minutes, 45)
+  assert.equal(boundaryReport.totalHours, 45)
+  assert.equal(boundaryReport.months[0].hours, 45)
   const yearActivities = await call('/api/activities?year=2025', 'GET', null, user)
   assert.equal(yearActivities.status, 200)
   assert.equal(yearActivities.body.length, 1)

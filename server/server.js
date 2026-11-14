@@ -2,6 +2,7 @@ const http = require('node:http')
 const { sendWorkbook } = require('./exports')
 const { personalRecords, personalAnnual } = require('./personal')
 const { createAuthentication } = require('./auth')
+const { migrateCreditUnits } = require('./credit-unit')
 const { importRoster, resetPassword } = require('./roster')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
@@ -17,6 +18,7 @@ CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NO
 CREATE TABLE IF NOT EXISTS activities(id INTEGER PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, location TEXT NOT NULL, starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, capacity INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'published', created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS registrations(activity_id INTEGER NOT NULL REFERENCES activities(id), user_id TEXT NOT NULL REFERENCES users(id), registered_at INTEGER NOT NULL, checked_in_at INTEGER, checked_in_by TEXT REFERENCES users(id), PRIMARY KEY(activity_id,user_id));
 CREATE INDEX IF NOT EXISTS registration_user ON registrations(user_id);`)
+migrateCreditUnits(db)
 const get = (sql, ...args) => db.prepare(sql).get(...args)
 if (
   !db
@@ -29,18 +31,18 @@ if (
   !db
     .prepare('PRAGMA table_info(activities)')
     .all()
-    .some((c) => c.name === 'credit_minutes')
+    .some((c) => c.name === 'credit_hours')
 )
-  db.exec('ALTER TABLE activities ADD COLUMN credit_minutes INTEGER NOT NULL DEFAULT 0')
+  db.exec('ALTER TABLE activities ADD COLUMN credit_hours REAL NOT NULL DEFAULT 0')
 if (
   !db
     .prepare('PRAGMA table_info(registrations)')
     .all()
-    .some((c) => c.name === 'credited_minutes')
+    .some((c) => c.name === 'credited_hours')
 )
-  db.exec('ALTER TABLE registrations ADD COLUMN credited_minutes INTEGER NOT NULL DEFAULT 0')
+  db.exec('ALTER TABLE registrations ADD COLUMN credited_hours REAL NOT NULL DEFAULT 0')
 db.exec(
-  "CREATE TABLE IF NOT EXISTS experiences(id INTEGER PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL, organizer TEXT NOT NULL, occurred_on TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', credit_minutes INTEGER NOT NULL DEFAULT 0, reviewed_by TEXT REFERENCES users(id), reviewed_at INTEGER, review_note TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)",
+  "CREATE TABLE IF NOT EXISTS experiences(id INTEGER PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL, organizer TEXT NOT NULL, occurred_on TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', credit_hours REAL NOT NULL DEFAULT 0, reviewed_by TEXT REFERENCES users(id), reviewed_at INTEGER, review_note TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)",
 )
 if (
   !db
@@ -178,7 +180,7 @@ function activityInput(input) {
       capacityValue === undefined || capacityValue === null || capacityValue === ''
         ? 0
         : Number(capacityValue),
-    minutes = Number(input.creditMinutes)
+    hours = Number(input.creditHours)
   if (
     !title ||
     title.length > 100 ||
@@ -195,16 +197,16 @@ function activityInput(input) {
       capacityValue !== null &&
       capacityValue !== '') ||
     capacity > 100000 ||
-    !Number.isInteger(minutes) ||
-    !numeric(input.creditMinutes) ||
-    input.creditMinutes === undefined ||
-    input.creditMinutes === null ||
-    input.creditMinutes === '' ||
-    minutes < 0 ||
-    minutes > 60000
+    !Number.isFinite(hours) || Math.abs(hours * 100 - Math.round(hours * 100)) > 1e-7 ||
+    !numeric(input.creditHours) ||
+    input.creditHours === undefined ||
+    input.creditHours === null ||
+    input.creditHours === '' ||
+    hours < 0 ||
+    hours > 60000
   )
     fail(400, '请填写活动名称、有效起止时间和学时；人数上限如填写须为正整数')
-  return [title, description, location, starts, ends, capacity, minutes]
+  return [title, description, location, starts, ends, capacity, hours]
 }
 function dto(a) {
   return {
@@ -215,7 +217,7 @@ function dto(a) {
     startsAt: a.starts_at,
     endsAt: a.ends_at,
     capacity: a.capacity === 0 ? null : a.capacity,
-    creditMinutes: a.credit_minutes,
+    creditHours: a.credit_hours,
     status: a.status,
     registeredCount: a.registered_count,
     registered: !!a.registered,
@@ -255,19 +257,19 @@ function ranking(url) {
   const end = Date.parse(year + 1 + '-01-01T00:00:00+08:00')
   const rows = all(
     `SELECT u.id,u.name,u.department,COUNT(a.id) eventCount,
-    COALESCE(SUM(CASE WHEN a.id IS NOT NULL THEN r.credited_minutes ELSE 0 END),0) totalMinutes
+    ROUND(COALESCE(SUM(CASE WHEN a.id IS NOT NULL THEN r.credited_hours ELSE 0 END),0),2) totalHours
     FROM users u LEFT JOIN registrations r ON r.user_id=u.id AND r.confirmed_at IS NOT NULL
     LEFT JOIN activities a ON a.id=r.activity_id AND a.status='published' AND a.starts_at>=? AND a.starts_at<?
     WHERE u.role='counselor' GROUP BY u.id`,
     start,
     end,
-  ).sort((a, b) => b.totalMinutes - a.totalMinutes || a.id.localeCompare(b.id))
-  let previousMinutes, rank
+  ).sort((a, b) => b.totalHours - a.totalHours || a.id.localeCompare(b.id))
+  let previousHours, rank
   return {
     year,
     rows: rows.map((person, index) => {
-      if (person.totalMinutes !== previousMinutes) rank = index + 1
-      previousMinutes = person.totalMinutes
+      if (person.totalHours !== previousHours) rank = index + 1
+      previousHours = person.totalHours
       return { ...person, rank }
     }),
   }
@@ -376,7 +378,7 @@ const server = http.createServer(async (req, res) => {
             { header: '未审核数（含未提交）', key: 'pendingCount', width: 26 },
             { header: '驳回数', key: 'rejectedCount', width: 12 },
             { header: '取消数', key: 'cancelledCount', width: 12 },
-            { header: '认定学时（分钟）', key: 'totalMinutes', width: 24 },
+            { header: '认定学时', key: 'totalHours', width: 24 },
           ],
           rows: [{ ...report, id: u.id, name: u.name, department: u.department }],
         },
@@ -391,8 +393,8 @@ const server = http.createServer(async (req, res) => {
               style: { numFmt: 'yyyy-mm-dd hh:mm' },
             },
             { header: '地点', key: 'location', width: 28 },
-            { header: '活动学时（分钟）', key: 'creditMinutes', width: 24 },
-            { header: '认定学时（分钟）', key: 'recognizedMinutes', width: 24 },
+            { header: '活动学时', key: 'creditHours', width: 24 },
+            { header: '认定学时', key: 'recognizedHours', width: 24 },
             { header: '审核情况', key: 'reviewLabel', width: 20 },
             { header: '培训经历', key: 'experience', width: 50 },
             { header: '审核意见', key: 'reviewNote', width: 40 },
@@ -510,7 +512,7 @@ const server = http.createServer(async (req, res) => {
         res,
         200,
         all(
-          'SELECT id,activity_id activityId,title,description,status,credit_minutes creditMinutes,review_note reviewNote FROM experiences WHERE user_id=? ORDER BY created_at DESC',
+          'SELECT id,activity_id activityId,title,description,status,credit_hours creditHours,review_note reviewNote FROM experiences WHERE user_id=? ORDER BY created_at DESC',
           u.id,
         ),
       )
@@ -551,7 +553,7 @@ const server = http.createServer(async (req, res) => {
         res,
         200,
         all(
-          "SELECT e.id,e.activity_id activityId,e.title,e.description,e.status,e.credit_minutes creditMinutes,e.review_note reviewNote,u.name,u.department,u.id userId FROM experiences e JOIN users u ON e.user_id=u.id ORDER BY CASE WHEN e.status='pending' THEN 0 ELSE 1 END,e.created_at DESC",
+          "SELECT e.id,e.activity_id activityId,e.title,e.description,e.status,e.credit_hours creditHours,e.review_note reviewNote,u.name,u.department,u.id userId FROM experiences e JOIN users u ON e.user_id=u.id ORDER BY CASE WHEN e.status='pending' THEN 0 ELSE 1 END,e.created_at DESC",
         ),
       )
     }
@@ -577,18 +579,18 @@ const server = http.createServer(async (req, res) => {
           if (a.status !== 'published' || !a.registered) fail(409, '活动已取消或报名不存在')
           if (a.starts_at > Date.now()) fail(409, '活动尚未开始，不能确认参加')
           run(
-            'UPDATE registrations SET confirmed_at=COALESCE(confirmed_at,?),confirmed_by=COALESCE(confirmed_by,?),credited_minutes=CASE WHEN confirmed_at IS NULL THEN ? ELSE credited_minutes END WHERE activity_id=? AND user_id=?',
+            'UPDATE registrations SET confirmed_at=COALESCE(confirmed_at,?),confirmed_by=COALESCE(confirmed_by,?),credited_hours=CASE WHEN confirmed_at IS NULL THEN ? ELSE credited_hours END WHERE activity_id=? AND user_id=?',
             Date.now(),
             u.id,
-            a.credit_minutes,
+            a.credit_hours,
             a.id,
             exp.user_id,
           )
         }
         run(
-          'UPDATE experiences SET status=?,credit_minutes=?,review_note=?,reviewed_by=?,reviewed_at=? WHERE id=?',
+          'UPDATE experiences SET status=?,credit_hours=?,review_note=?,reviewed_by=?,reviewed_at=? WHERE id=?',
           status,
-          status === 'approved' ? a.credit_minutes : 0,
+          status === 'approved' ? a.credit_hours : 0,
           note,
           u.id,
           Date.now(),
@@ -660,7 +662,7 @@ const server = http.createServer(async (req, res) => {
             { header: '姓名', key: 'name', width: 18 },
             { header: '学院 / 部门', key: 'department', width: 28 },
             { header: '确认参加次数', key: 'eventCount', width: 20 },
-            { header: '累计学时（分钟）', key: 'totalMinutes', width: 24 },
+            { header: '累计学时', key: 'totalHours', width: 24 },
           ],
           rows: report.rows,
         },
@@ -672,7 +674,7 @@ const server = http.createServer(async (req, res) => {
         "SELECT u.id,u.name,u.department,COUNT(r.activity_id) registeredCount,COUNT(r.confirmed_at) confirmedCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' GROUP BY u.id ORDER BY u.department,u.name,u.id",
       )
       const details = all(
-        "SELECT u.id,u.name,u.department,a.title,a.starts_at startsAt,a.location,a.status,r.registered_at registeredAt,r.confirmed_at confirmedAt,r.credited_minutes creditedMinutes FROM registrations r JOIN users u ON u.id=r.user_id JOIN activities a ON a.id=r.activity_id WHERE u.role='counselor' ORDER BY u.department,u.id,a.starts_at",
+        "SELECT u.id,u.name,u.department,a.title,a.starts_at startsAt,a.location,a.status,r.registered_at registeredAt,r.confirmed_at confirmedAt,r.credited_hours creditedHours FROM registrations r JOIN users u ON u.id=r.user_id JOIN activities a ON a.id=r.activity_id WHERE u.role='counselor' ORDER BY u.department,u.id,a.starts_at",
       )
       const formatTime = (value) => (value ? new Date(value + 8 * 3600000) : null)
       return await sendWorkbook(res, '人员报名情况.xlsx', [
@@ -708,7 +710,7 @@ const server = http.createServer(async (req, res) => {
               style: { numFmt: 'yyyy-mm-dd hh:mm' },
             },
             { header: '参加状态', key: 'state', width: 20 },
-            { header: '计入学时（分钟）', key: 'minutes', width: 24 },
+            { header: '计入学时', key: 'hours', width: 24 },
           ],
           rows: details.map((r) => ({
             ...r,
@@ -716,7 +718,7 @@ const server = http.createServer(async (req, res) => {
             registeredText: formatTime(r.registeredAt),
             state:
               r.status === 'cancelled' ? '活动已取消' : r.confirmedAt ? '已确认参加' : '待确认参加',
-            minutes: r.status === 'published' && r.confirmedAt ? r.creditedMinutes : 0,
+            hours: r.status === 'published' && r.confirmedAt ? r.creditedHours : 0,
           })),
         },
       ])
@@ -753,7 +755,7 @@ const server = http.createServer(async (req, res) => {
       admin(u)
       const v = activityInput(await body(req))
       const r = run(
-        'INSERT INTO activities(title,description,location,starts_at,ends_at,capacity,credit_minutes,created_at) VALUES(?,?,?,?,?,?,?,?)',
+        'INSERT INTO activities(title,description,location,starts_at,ends_at,capacity,credit_hours,created_at) VALUES(?,?,?,?,?,?,?,?)',
         ...v,
         Date.now(),
       )
@@ -802,11 +804,11 @@ const server = http.createServer(async (req, res) => {
           'SELECT 1 AS found FROM registrations WHERE activity_id=? AND confirmed_at IS NOT NULL LIMIT 1',
           id,
         ) &&
-        (v[6] !== a.credit_minutes || v[3] !== a.starts_at)
+        (v[6] !== a.credit_hours || v[3] !== a.starts_at)
       )
         fail(409, '已有参加确认，不能更改开始时间或学时')
       run(
-        'UPDATE activities SET title=?,description=?,location=?,starts_at=?,ends_at=?,capacity=?,credit_minutes=? WHERE id=?',
+        'UPDATE activities SET title=?,description=?,location=?,starts_at=?,ends_at=?,capacity=?,credit_hours=? WHERE id=?',
         ...v,
         id,
       )
@@ -820,7 +822,7 @@ const server = http.createServer(async (req, res) => {
       try {
         run("UPDATE activities SET status='cancelled' WHERE id=?", id)
         run(
-          "UPDATE experiences SET status='rejected',credit_minutes=0,review_note='活动已取消',reviewed_by=?,reviewed_at=? WHERE activity_id=? AND status='pending'",
+          "UPDATE experiences SET status='rejected',credit_hours=0,review_note='活动已取消',reviewed_by=?,reviewed_at=? WHERE activity_id=? AND status='pending'",
           u.id,
           Date.now(),
           id,
@@ -855,17 +857,17 @@ const server = http.createServer(async (req, res) => {
       db.exec('BEGIN IMMEDIATE')
       try {
         const result = run(
-          'UPDATE registrations SET confirmed_at=?,confirmed_by=?,credited_minutes=? WHERE activity_id=? AND user_id=? AND confirmed_at IS NULL',
+          'UPDATE registrations SET confirmed_at=?,confirmed_by=?,credited_hours=? WHERE activity_id=? AND user_id=? AND confirmed_at IS NULL',
           Date.now(),
           u.id,
-          a.credit_minutes,
+          a.credit_hours,
           id,
           String(b.userId || ''),
         )
         if (!result.changes) fail(409, '未报名或已确认参加')
         run(
-          "UPDATE experiences SET status='approved',credit_minutes=?,reviewed_by=?,reviewed_at=?,review_note=CASE WHEN review_note='' THEN '管理员已确认参加' ELSE review_note END WHERE activity_id=? AND user_id=? AND status='pending'",
-          a.credit_minutes,
+          "UPDATE experiences SET status='approved',credit_hours=?,reviewed_by=?,reviewed_at=?,review_note=CASE WHEN review_note='' THEN '管理员已确认参加' ELSE review_note END WHERE activity_id=? AND user_id=? AND status='pending'",
+          a.credit_hours,
           u.id,
           Date.now(),
           id,
