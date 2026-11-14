@@ -38,6 +38,7 @@
         </view>
       </view>
       <view class="muted">报名、培训经历与审核结果在此统一查看。</view>
+      <navigator class="card" url="/pages/self-training/self-training">提交自行参加的培训活动 ›</navigator>
       <view class="card" wx:for="{{records}}" wx:key="id">
         <view class="record-header">
           <view class="title">{{item.title}}</view>
@@ -50,14 +51,15 @@
         <view class="muted" wx:if="{{item.reviewStatus === 'unsubmitted' && !item.canSubmit}}">
           活动开始后可提交培训经历
         </view>
-        <block wx:if="{{item.experienceId}}">
+        <block wx:if="{{item.experienceId || item.external}}">
           <view class="line">培训经历：{{item.experience}}</view>
           <view class="muted">经历审核：{{item.experienceLabel}}</view>
           <view class="muted" wx:if="{{item.reviewNote}}">审核意见：{{item.reviewNote}}</view>
         </block>
+        <proof-files files="{{item.proofs}}"></proof-files>
         <view class="actions">
           <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="open">
-            活动详情
+            {{item.external ? '自行提交详情' : '活动详情'}}
           </button>
           <button
             class="button-mini primary"
@@ -76,13 +78,14 @@
             bindinput="input"
             maxlength="2000"
           ></textarea>
+          <proof-files files="{{proofs}}" editable="{{!busy}}" bindchange="proofsChanged" bindbusy="uploadState"></proof-files>
           <view class="actions">
             <button
               class="button-mini primary"
               size="mini"
               bindtap="submit"
               loading="{{busy}}"
-              disabled="{{busy}}"
+              disabled="{{busy || uploading}}"
             >
               提交审核
             </button>

@@ -5,6 +5,7 @@ const { createAuthentication } = require('./auth')
 const { migrateCreditUnits } = require('./credit-unit')
 const { importRoster, resetPassword } = require('./roster')
 const { createAttendance } = require('./attendance')
+const { createEvidence, proofList, externalRecords } = require('./evidence')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const pathModule = require('node:path')
@@ -88,6 +89,7 @@ const send = (res, status, value) => {
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex')
 const authentication = createAuthentication(db)
 const attendance = createAttendance(db)
+const evidence = createEvidence(db)
 function body(req) {
   return new Promise((resolve, reject) => {
     const chunks = []
@@ -257,6 +259,7 @@ function ranking(url) {
   const year = readYear(url)
   const start = Date.parse(year + '-01-01T00:00:00+08:00')
   const end = Date.parse(year + 1 + '-01-01T00:00:00+08:00')
+  const external = new Map(all("SELECT user_id,COUNT(*) eventCount,ROUND(SUM(credited_hours),2) totalHours FROM external_trainings WHERE status='approved' AND occurred_on>=? AND occurred_on<? GROUP BY user_id", year + '-01-01', (year + 1) + '-01-01').map(row => [row.user_id, row]))
   const rows = all(
     `SELECT u.id,u.name,u.department,COUNT(a.id) eventCount,
     ROUND(COALESCE(SUM(CASE WHEN a.id IS NOT NULL THEN r.credited_hours ELSE 0 END),0),2) totalHours
@@ -265,7 +268,9 @@ function ranking(url) {
     WHERE u.role='counselor' GROUP BY u.id`,
     start,
     end,
-  ).sort((a, b) => b.totalHours - a.totalHours || a.id.localeCompare(b.id))
+  ).map(row => ({ ...row, eventCount: row.eventCount + (external.get(row.id)?.eventCount || 0),
+    totalHours: Math.round((row.totalHours + (external.get(row.id)?.totalHours || 0)) * 100) / 100,
+  })).sort((a, b) => b.totalHours - a.totalHours || a.id.localeCompare(b.id))
   let previousHours, rank
   return {
     year,
@@ -275,6 +280,11 @@ function ranking(url) {
       return { ...person, rank }
     }),
   }
+}
+
+function withExternalCounts(rows) {
+  const counts = new Map(all("SELECT user_id,COUNT(*) submitted,SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) approved FROM external_trainings GROUP BY user_id").map(row => [row.user_id, row]))
+  return rows.map(row => ({ ...row, externalSubmittedCount: counts.get(row.id)?.submitted || 0, externalApprovedCount: counts.get(row.id)?.approved || 0 }))
 }
 
 const server = http.createServer(async (req, res) => {
@@ -360,6 +370,34 @@ const server = http.createServer(async (req, res) => {
     const u = requireUser(req)
     if (!['/api/me', '/api/logout'].includes(path) && authentication.mustChange(u.id))
       return send(res, 403, { error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' })
+    if (path === '/api/proofs' && method === 'POST')
+      return send(res, 201, await evidence.upload(req, u, () => requireUser(req)))
+    const proofMatch = path.match(/^\/api\/proofs\/([a-f0-9]{48})$/)
+    if (proofMatch && method === 'GET') {
+      const file = await evidence.download(proofMatch[1], u, () => requireUser(req))
+      res.writeHead(200, { 'Content-Type': file.mimeType, 'Content-Length': file.buffer.length,
+        'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(file.name),
+        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
+      return res.end(file.buffer)
+    }
+    const externalMatch = path.match(/^\/api\/my\/external-trainings(?:\/(\d+))?$/)
+    if (externalMatch) {
+      const id = externalMatch[1] ? Number(externalMatch[1]) : null
+      if (id !== null && (!Number.isSafeInteger(id) || id <= 0)) fail(400, '记录编号无效')
+      if (method === 'GET' && id) return send(res, 200, evidence.getExternal(id, u))
+      if ((method === 'POST' && !id) || (method === 'PUT' && id))
+        return send(res, method === 'POST' ? 201 : 200, evidence.submitExternal(id, await body(req), u))
+      fail(404, '接口不存在')
+    }
+    if (path === '/api/admin/external-trainings' && method === 'GET') {
+      admin(u)
+      return send(res, 200, evidence.adminList())
+    }
+    const externalReviewMatch = path.match(/^\/api\/admin\/external-trainings\/(\d+)\/review$/)
+    if (externalReviewMatch && method === 'POST') {
+      admin(u)
+      return send(res, 200, evidence.review(Number(externalReviewMatch[1]), await body(req), u))
+    }
     const attendanceMatch = path.match(/^\/api\/(admin\/)?activities\/(\d+)\/attendance(?:\/(in|out))?$/)
     if (attendanceMatch) {
       const [, management, activityId, phase] = attendanceMatch, id = Number(activityId)
@@ -393,7 +431,7 @@ const server = http.createServer(async (req, res) => {
             { header: '工号', key: 'id', width: 20 },
             { header: '姓名', key: 'name', width: 18 },
             { header: '学院 / 部门', key: 'department', width: 28 },
-            { header: '报名活动数（含取消）', key: 'activityCount', width: 26 },
+            { header: '活动数（含自行提交和取消）', key: 'activityCount', width: 26 },
             { header: '审核通过数', key: 'approvedCount', width: 18 },
             { header: '未审核数（含未提交）', key: 'pendingCount', width: 26 },
             { header: '驳回数', key: 'rejectedCount', width: 12 },
@@ -554,18 +592,7 @@ const server = http.createServer(async (req, res) => {
         )
       )
         fail(409, '该活动已有待审核或已通过的经历')
-      const date = new Date(a.starts_at + 8 * 3600000).toISOString().slice(0, 10)
-      const result = run(
-        'INSERT INTO experiences(user_id,activity_id,title,organizer,occurred_on,description,created_at) VALUES(?,?,?,?,?,?,?)',
-        u.id,
-        id,
-        a.title,
-        '平台活动',
-        date,
-        description,
-        Date.now(),
-      )
-      return send(res, 201, { id: Number(result.lastInsertRowid), status: 'pending' })
+      return send(res, 201, evidence.createExperience(a, u, description, b.proofIds))
     }
     if (path === '/api/admin/experiences' && method === 'GET') {
       admin(u)
@@ -574,7 +601,7 @@ const server = http.createServer(async (req, res) => {
         200,
         all(
           "SELECT e.id,e.activity_id activityId,e.title,e.description,e.status,e.credit_hours creditHours,e.review_note reviewNote,u.name,u.department,u.id userId FROM experiences e JOIN users u ON e.user_id=u.id ORDER BY CASE WHEN e.status='pending' THEN 0 ELSE 1 END,e.created_at DESC",
-        ),
+        ).map(record => ({ ...record, proofs: proofList(db, 'experience_id', record.id) })),
       )
     }
     const reviewMatch = path.match(/^\/api\/admin\/experiences\/(\d+)\/review$/)
@@ -598,6 +625,7 @@ const server = http.createServer(async (req, res) => {
           if (!a) fail(409, '旧版记录未关联活动，可驳回后让老师重新提交')
           if (a.status !== 'published' || !a.registered) fail(409, '活动已取消或报名不存在')
           if (a.starts_at > Date.now()) fail(409, '活动尚未开始，不能确认参加')
+          evidence.preventDuplicateCredit(a, exp.user_id)
           run(
             'UPDATE registrations SET confirmed_at=COALESCE(confirmed_at,?),confirmed_by=COALESCE(confirmed_by,?),credited_hours=CASE WHEN confirmed_at IS NULL THEN ? ELSE credited_hours END WHERE activity_id=? AND user_id=?',
             Date.now(),
@@ -667,7 +695,7 @@ const server = http.createServer(async (req, res) => {
       return send(
         res,
         200,
-        get("SELECT COUNT(*) pendingCount FROM experiences WHERE status='pending'"),
+        get("SELECT (SELECT COUNT(*) FROM experiences WHERE status='pending') + (SELECT COUNT(*) FROM external_trainings WHERE status='pending') pendingCount"),
       )
     }
     if (path === '/api/admin/exports/ranking' && method === 'GET') {
@@ -681,7 +709,7 @@ const server = http.createServer(async (req, res) => {
             { header: '工号', key: 'id', width: 20 },
             { header: '姓名', key: 'name', width: 18 },
             { header: '学院 / 部门', key: 'department', width: 28 },
-            { header: '确认参加次数', key: 'eventCount', width: 20 },
+            { header: '认定活动次数', key: 'eventCount', width: 20 },
             { header: '累计学时', key: 'totalHours', width: 24 },
           ],
           rows: report.rows,
@@ -690,12 +718,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (path === '/api/admin/exports/people' && method === 'GET') {
       admin(u)
-      const summary = all(
+      const summary = withExternalCounts(all(
         "SELECT u.id,u.name,u.department,COUNT(r.activity_id) registeredCount,COUNT(r.confirmed_at) confirmedCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' GROUP BY u.id ORDER BY u.department,u.name,u.id",
-      )
+      ))
       const details = all(
         "SELECT u.id,u.name,u.department,a.title,a.starts_at startsAt,a.location,a.status,r.registered_at registeredAt,r.confirmed_at confirmedAt,r.credited_hours creditedHours FROM registrations r JOIN users u ON u.id=r.user_id JOIN activities a ON a.id=r.activity_id WHERE u.role='counselor' ORDER BY u.department,u.id,a.starts_at",
       )
+      const externalRows = all("SELECT u.id,u.name,u.department,e.title,e.organizer,e.occurred_on occurredOn,e.requested_hours requestedHours,e.credited_hours creditHours,e.status,e.review_note reviewNote FROM external_trainings e JOIN users u ON u.id=e.user_id ORDER BY e.occurred_on DESC,e.id DESC")
       const formatTime = (value) => (value ? new Date(value + 8 * 3600000) : null)
       return await sendWorkbook(res, '人员报名情况.xlsx', [
         {
@@ -706,6 +735,8 @@ const server = http.createServer(async (req, res) => {
             { header: '学院 / 部门', key: 'department', width: 28 },
             { header: '报名次数（含取消活动）', key: 'registeredCount', width: 28 },
             { header: '已确认次数（含取消活动）', key: 'confirmedCount', width: 30 },
+            { header: '自行提交次数', key: 'externalSubmittedCount', width: 20 },
+            { header: '自行提交通过次数', key: 'externalApprovedCount', width: 22 },
           ],
           rows: summary,
         },
@@ -741,6 +772,13 @@ const server = http.createServer(async (req, res) => {
             hours: r.status === 'published' && r.confirmedAt ? r.creditedHours : 0,
           })),
         },
+        ...(externalRows.length ? [{ name: '自行提交活动', columns: [
+          { header: '工号', key: 'id', width: 20 }, { header: '姓名', key: 'name', width: 18 },
+          { header: '学院 / 部门', key: 'department', width: 28 }, { header: '活动名称', key: 'title', width: 36 },
+          { header: '主办方', key: 'organizer', width: 28 }, { header: '参加日期', key: 'occurredOn', width: 18 },
+          { header: '申请学时', key: 'requestedHours', width: 16 }, { header: '认定学时', key: 'creditHours', width: 16 },
+          { header: '审核状态', key: 'status', width: 18 }, { header: '审核意见', key: 'reviewNote', width: 40 },
+        ], rows: externalRows.map(row => ({ ...row, status: { pending: '待审核', approved: '已通过', rejected: '已驳回' }[row.status] })) }] : []),
       ])
     }
     if (path === '/api/admin/people' && method === 'GET') {
@@ -748,9 +786,9 @@ const server = http.createServer(async (req, res) => {
       return send(
         res,
         200,
-        all(
+        withExternalCounts(all(
           "SELECT u.id,u.name,u.department,COUNT(r.activity_id) registeredCount,COUNT(r.confirmed_at) confirmedCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' GROUP BY u.id ORDER BY u.department,u.name",
-        ),
+        )),
       )
     }
     if (path === '/api/admin/person-records' && method === 'GET') {
@@ -764,7 +802,7 @@ const server = http.createServer(async (req, res) => {
         all(
           'SELECT activity_id FROM registrations WHERE user_id=? ORDER BY registered_at DESC',
           userId,
-        ).map((x) => dto(activity(x.activity_id, person))),
+        ).map((x) => dto(activity(x.activity_id, person))).concat(externalRecords(db, userId).map(record => ({ ...record, registered: true, endsAt: record.startsAt, description: record.experience }))),
       )
     }
     if (path === '/api/admin/activities' && method === 'GET') {
@@ -876,6 +914,7 @@ const server = http.createServer(async (req, res) => {
       if (a.status !== 'published' || a.starts_at > Date.now()) fail(409, '活动已取消或尚未开始')
       db.exec('BEGIN IMMEDIATE')
       try {
+        evidence.preventDuplicateCredit(a, String(b.userId || ''))
         const result = run(
           'UPDATE registrations SET confirmed_at=?,confirmed_by=?,credited_hours=? WHERE activity_id=? AND user_id=? AND confirmed_at IS NULL',
           Date.now(),

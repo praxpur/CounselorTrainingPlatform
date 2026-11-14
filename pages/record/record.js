@@ -10,6 +10,8 @@ Page({
     selectedId: null,
     description: '',
     busy: false,
+    proofs: [],
+    uploading: false,
   },
   onShow() {
     this.load()
@@ -35,6 +37,7 @@ Page({
     }
   },
   changeFilter(event) {
+    if (this.data.busy || this.data.uploading) return
     this.setData({ filter: event.currentTarget.dataset.filter, selectedId: null, description: '' })
     this.applyFilter()
   },
@@ -51,20 +54,29 @@ Page({
     })
   },
   open(event) {
+    const record = this.data.allRecords.find(value => value.id === event.currentTarget.dataset.id)
+    if (record?.external) {
+      wx.navigateTo({ url: '/pages/self-training/self-training?id=' + record.externalId })
+      return
+    }
     wx.navigateTo({ url: '/pages/course/detail?id=' + event.currentTarget.dataset.id })
   },
   editExperience(event) {
+    if (this.data.busy || this.data.uploading) return
     const record = this.data.allRecords.find((r) => r.id === event.currentTarget.dataset.id)
-    if (record) this.setData({ selectedId: record.id, description: record.experience || '' })
+    if (record?.external) { this.open(event); return }
+    if (record) this.setData({ selectedId: record.id, description: record.experience || '', proofs: record.proofs || [] })
   },
+  proofsChanged(event) { this.setData({ proofs: event.detail.files }) },
+  uploadState(event) { this.setData({ uploading: event.detail.busy }) },
   input(event) {
     this.setData({ description: event.detail.value })
   },
   cancel() {
-    if (!this.data.busy) this.setData({ selectedId: null, description: '' })
+    if (!this.data.busy && !this.data.uploading) this.setData({ selectedId: null, description: '', proofs: [] })
   },
   async submit() {
-    if (this.data.busy) return
+    if (this.data.busy || this.data.uploading) return
     if (!this.data.description.trim()) {
       wx.showToast({ title: '请填写培训经历', icon: 'none' })
       return
@@ -74,6 +86,7 @@ Page({
       await api.request('/api/experiences', 'POST', {
         activityId: this.data.selectedId,
         description: this.data.description,
+        proofIds: this.data.proofs.map(file => file.id),
       })
       this.setData({ selectedId: null, description: '' })
       await this.load()

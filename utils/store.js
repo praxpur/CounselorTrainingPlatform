@@ -2,14 +2,14 @@
 const API_BASE = 'http://127.0.0.1:3000'
 const { ensureFontForText } = require('./fonts')
 const TOKEN_KEY = 'training_token_v2'
-function request(path, method, data) {
+function request(path, method, data, options = {}) {
   return new Promise((resolve, reject) =>
     wx.request({
       url: API_BASE + path,
       method: method || 'GET',
-      timeout: 15000,
+      timeout: options.timeout || 15000,
       data,
-      header: { Authorization: 'Bearer ' + (wx.getStorageSync(TOKEN_KEY) || '') },
+      header: { ...options.header, Authorization: 'Bearer ' + (wx.getStorageSync(TOKEN_KEY) || '') },
       success(res) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
@@ -133,6 +133,24 @@ module.exports = {
   time,
   format,
   exportExcel,
+  uploadProof: (filePath, name) => new Promise((resolve, reject) => wx.getFileSystemManager().readFile({
+    filePath,
+    success: result => request('/api/proofs', 'POST', result.data, {
+      timeout: 30000, header: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(name) },
+    }).then(resolve, reject),
+    fail: () => reject(new Error('无法读取证明材料')),
+  })),
+  openProof: file => new Promise((resolve, reject) => wx.downloadFile({
+    url: API_BASE + '/api/proofs/' + encodeURIComponent(file.id),
+    header: { Authorization: 'Bearer ' + (wx.getStorageSync(TOKEN_KEY) || '') },
+    success: result => {
+      if (result.statusCode === 401) wx.removeStorageSync(TOKEN_KEY)
+      if (result.statusCode !== 200) return reject(new Error('材料下载失败或无访问权限'))
+      if (file.mimeType.startsWith('image/')) wx.previewImage({ urls: [result.tempFilePath], success: resolve, fail: reject })
+      else wx.openDocument({ filePath: result.tempFilePath, fileType: 'pdf', showMenu: true, success: resolve, fail: reject })
+    },
+    fail: () => reject(new Error('证明材料下载失败')),
+  })),
   setToken: (t) => wx.setStorageSync(TOKEN_KEY, t),
   clearToken: () => wx.removeStorageSync(TOKEN_KEY),
 }

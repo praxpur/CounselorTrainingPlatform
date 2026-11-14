@@ -1,0 +1,25 @@
+<view class="page-shell">
+  <navigation-bar title="自行参加的培训" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <status-panel loading="{{loading}}" error-message="{{errorMessage}}" bindretry="load"></status-panel>
+      <view class="card">
+        <view class="title">{{editing ? statusLabel : '提交平台之外的培训活动'}}</view>
+        <view class="muted">管理员审核后认定学时。同一活动请勿重复提交；平台已发布的活动请从活动记录提交经历。</view>
+        <view class="field-label">活动名称</view>
+        <input maxlength="100" value="{{form.title}}" disabled="{{readOnly}}" data-field="title" bindinput="input" />
+        <view class="field-label">主办方</view>
+        <input maxlength="100" value="{{form.organizer}}" disabled="{{readOnly}}" data-field="organizer" bindinput="input" />
+        <view class="field-label">参加日期</view>
+        <picker mode="date" value="{{form.occurredOn}}" disabled="{{readOnly}}" data-field="occurredOn" bindchange="input"><view class="line">{{form.occurredOn}} ›</view></picker>
+        <view class="field-label">申请学时（最多两位小数）</view>
+        <input type="digit" value="{{form.requestedHours}}" disabled="{{readOnly}}" data-field="requestedHours" bindinput="input" />
+        <view class="field-label">培训经历</view>
+        <textarea maxlength="2000" value="{{form.description}}" disabled="{{readOnly}}" data-field="description" bindinput="input"></textarea>
+        <proof-files files="{{proofs}}" editable="{{!readOnly && !busy}}" bindchange="proofsChanged" bindbusy="uploadState"></proof-files>
+        <view class="muted" wx:if="{{reviewNote}}">审核意见：{{reviewNote}}</view>
+        <button wx:if="{{!readOnly}}" class="primary" bindtap="submit" loading="{{busy}}" disabled="{{busy || loading || uploading}}">提交审核</button>
+      </view>
+    </view>
+  </scroll-view>
+</view>

@@ -4,6 +4,38 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 
+test('自行培训提交后只读，管理员认定学时走独立审核接口', async () => {
+  let writes = 0
+  const { page: training } = page('pages/self-training/self-training.js', {
+    guard: () => true, error() {},
+    request: async (url, method, body) => {
+      if (method === 'POST') { writes++; assert.equal(body.requestedHours, 1.5); return { id: 10 } }
+      return { id: 10, title: '培训', organizer: '主办方', occurredOn: '2026-11-01', requestedHours: 1.5, description: '经历', status: 'pending', proofs: [] }
+    },
+  })
+  training.data.form.requestedHours = '1.5'
+  training.data.proofs = [{ id: 'proof' }]
+  await training.submit()
+  await training.submit()
+  assert.equal(writes, 1)
+  assert.equal(training.data.readOnly, true)
+
+  let route, payload
+  const { page: reviews } = page('pages/reviews/reviews.js', {
+    guard: () => true, error() {},
+    request: async (url, method, body) => {
+      if (method === 'POST') { route = url; payload = body; return {} }
+      return url === '/api/admin/experiences' ? [] : [{ id: 1, requestedHours: 1.5, status: 'pending' }]
+    },
+  }, { showModal: options => options.success({ confirm: true }) })
+  await reviews.load()
+  reviews.data.hours['external:1'] = '2.25'
+  reviews.review({ currentTarget: { dataset: { id: 'external:1', status: 'approved' } } })
+  await new Promise(setImmediate)
+  assert.equal(route, '/api/admin/external-trainings/1/review')
+  assert.equal(payload.creditHours, 2.25)
+})
+
 test('双重签到从相机扫码并获取 GCJ-02 定位，取消扫码不提交记录', async () => {
   for (const canceled of [false, true]) {
     let writes = 0, locations = 0, done = false

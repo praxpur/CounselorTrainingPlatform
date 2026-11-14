@@ -44,7 +44,7 @@
             <view class="stat-number">{{report.pendingCount}}</view>
           </view>
           <view class="stat-card">
-            <view class="muted">报名活动（含取消）</view>
+            <view class="muted">活动数（含自行提交）</view>
             <view class="stat-number">{{report.activityCount}}</view>
           </view>
         </view>

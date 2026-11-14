@@ -1,0 +1,8 @@
+<view class="proof-files">
+  <view class="line" wx:for="{{files}}" wx:key="id">
+    <text data-id="{{item.id}}" bindtap="open">📎 {{item.name}}</text>
+    <button wx:if="{{editable}}" size="mini" data-id="{{item.id}}" bindtap="remove" disabled="{{uploading}}">移除</button>
+  </view>
+  <button wx:if="{{editable}}" size="mini" bindtap="add" loading="{{uploading}}" disabled="{{uploading || files.length >= 5}}">添加图片 / PDF 证明</button>
+  <view class="muted" wx:if="{{editable}}">最多 5 份，每份不超过 5 MB；支持 JPG、PNG 和 PDF。</view>
+</view>

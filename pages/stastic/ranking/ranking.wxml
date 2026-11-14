@@ -34,7 +34,7 @@
         </button>
       </view>
       <view class="muted">
-        按管理员确认参加的活动统计，培训经历不重复计时；学时相同并列。单位：学时。
+        统计已确认的平台活动与审核通过的自行培训；同一活动不重复计时，学时相同并列。单位：学时。
       </view>
       <view class="card" wx:for="{{rows}}" wx:key="id">
         <view class="title">第 {{item.rank}} 名　{{item.name}}</view>

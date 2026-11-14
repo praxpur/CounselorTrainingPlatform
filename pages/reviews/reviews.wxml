@@ -20,7 +20,10 @@
         <view class="title">{{item.title}}</view>
         <view class="muted">{{item.name}} · {{item.department}} · {{item.userId}}</view>
         <view class="line">{{item.description}}</view>
+        <view class="muted" wx:if="{{item.external}}">自行参加 · {{item.organizer}} · {{item.occurredOn}} · 申请 {{item.requestedHours}} 学时</view>
+        <proof-files files="{{item.proofs}}"></proof-files>
         <block wx:if="{{item.status === 'pending'}}">
+          <input wx:if="{{item.external}}" type="digit" placeholder="认定学时（两位小数）" value="{{hours[item.id] === undefined ? item.requestedHours : hours[item.id]}}" data-id="{{item.id}}" bindinput="inputHours" />
           <input
             maxlength="500"
             placeholder="审核意见（驳回时必填）"

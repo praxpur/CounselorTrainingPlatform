@@ -21,7 +21,8 @@
     "pages/password/password",
     "pages/user-import/user-import",
     "pages/attendance/attendance",
-    "pages/attendance-manage/attendance-manage"
+    "pages/attendance-manage/attendance-manage",
+    "pages/self-training/self-training"
   ],
   "window": {
     "navigationBarTextStyle": "black",

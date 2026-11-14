@@ -1,6 +1,7 @@
+const { externalRecords, proofList } = require('./evidence')
 // 报名与最新一条培训经历合并，年度汇总与个人导出使用同一份数据。
 function personalRecords(db, userId) {
-  return db
+  const platform = db
     .prepare(
       `
     SELECT a.id,a.title,a.location,a.status,a.starts_at startsAt,a.ends_at endsAt,
@@ -44,6 +45,8 @@ function personalRecords(db, userId) {
           record.startsAt <= Date.now(),
       }
     })
+  return [...platform.map(record => ({ ...record, proofs: proofList(db, 'experience_id', record.experienceId) })),
+    ...externalRecords(db, userId)].sort((a, b) => b.startsAt - a.startsAt || String(b.id).localeCompare(String(a.id)))
 }
 
 function personalAnnual(db, userId, year) {
