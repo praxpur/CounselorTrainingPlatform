@@ -1,0 +1,1 @@
+.audit-detail { display: block; white-space: pre-wrap; word-break: break-all; font-size: 24rpx; margin: 16rpx 0; }

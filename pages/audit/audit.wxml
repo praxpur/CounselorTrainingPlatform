@@ -1,0 +1,20 @@
+<view class="page-shell">
+  <navigation-bar title="操作审计" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <input placeholder="操作人工号（可留空）" value="{{actor}}" bindinput="input" bindconfirm="load" />
+      <picker range="{{actionLabels}}" value="{{actionIndex}}" bindchange="changeAction"><view class="card">{{actionLabels[actionIndex]}} ›</view></picker>
+      <button bindtap="load" disabled="{{loading}}">查询 / 刷新</button>
+      <status-panel loading="{{loading}}" error-message="{{errorMessage}}" bindretry="load"></status-panel>
+      <view class="card" wx:for="{{rows}}" wx:key="id">
+        <view class="title">{{item.label}} · {{item.outcome === 'success' ? '成功' : '失败'}}</view>
+        <view class="muted">{{item.timeText}} · {{item.actorId}}</view>
+        <view class="line">对象：{{item.target}}</view>
+        <text class="audit-detail" selectable>{{item.detailText}}</text>
+        <view class="muted">请求编号：{{item.requestId}}</view>
+      </view>
+      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading}}">加载更早记录</button>
+      <view class="muted" wx:if="{{!loading && !errorMessage && !rows.length}}">暂无对应记录</view>
+    </view>
+  </scroll-view>
+</view>

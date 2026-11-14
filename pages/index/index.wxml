@@ -99,6 +99,7 @@
           </navigator>
         </view>
         <button class="logout" bindtap="logout">退出登录</button>
+        <navigator class="card" url="/pages/audit/audit">查看操作审计 ›</navigator>
         <view class="school-footer">济南大学学生工作处</view>
       </block>
       <block wx:elif="{{!loading && user}}">

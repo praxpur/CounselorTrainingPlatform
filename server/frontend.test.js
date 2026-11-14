@@ -4,6 +4,24 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 
+test('审计页使用游标追加，按钮事件刷新不会误当作加载更多', async () => {
+  const urls = []
+  const { page: audit } = page('pages/audit/audit.js', {
+    guard: () => true, time: () => '时间', error() {},
+    request: async url => {
+      urls.push(url)
+      return { rows: [{ id: 4 - urls.length, action: 'users.update', detail: {} }], hasMore: urls.length === 1, nextCursor: urls.length === 1 ? 3 : null }
+    },
+  })
+  await audit.load()
+  await audit.more()
+  assert.equal(audit.data.rows.length, 2)
+  assert.match(urls[1], /before=3/)
+  await audit.load({ type: 'tap' })
+  assert.equal(audit.data.rows.length, 1)
+  assert.ok(!urls[2].includes('before='))
+})
+
 test('自行培训提交后只读，管理员认定学时走独立审核接口', async () => {
   let writes = 0
   const { page: training } = page('pages/self-training/self-training.js', {

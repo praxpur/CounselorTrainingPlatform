@@ -6,6 +6,7 @@ const { migrateCreditUnits } = require('./credit-unit')
 const { importRoster, resetPassword } = require('./roster')
 const { createAttendance } = require('./attendance')
 const { createEvidence, proofList, externalRecords } = require('./evidence')
+const { createAudit } = require('./audit')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const pathModule = require('node:path')
@@ -90,6 +91,7 @@ const hash = (value) => crypto.createHash('sha256').update(value).digest('hex')
 const authentication = createAuthentication(db)
 const attendance = createAttendance(db)
 const evidence = createEvidence(db)
+const audit = createAudit(db)
 function body(req) {
   return new Promise((resolve, reject) => {
     const chunks = []
@@ -287,7 +289,7 @@ function withExternalCounts(rows) {
   return rows.map(row => ({ ...row, externalSubmittedCount: counts.get(row.id)?.submitted || 0, externalApprovedCount: counts.get(row.id)?.approved || 0 }))
 }
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer((req, res) => audit.run(req, res, async () => {
   try {
     let url
     try {
@@ -299,8 +301,11 @@ const server = http.createServer(async (req, res) => {
     const path = url.pathname,
       method = req.method
     if (path === '/health' && method === 'GET') return send(res, 200, { ok: true })
-    if (path === '/api/auth/login' && method === 'POST')
-      return send(res, 200, await authentication.login(await body(req), req.socket.remoteAddress))
+    if (path === '/api/auth/login' && method === 'POST') {
+      const input = await body(req)
+      if (typeof input.id === 'string' && /^[a-zA-Z0-9_-]{1,40}$/.test(input.id.trim())) req.auditAccount = input.id.trim()
+      return send(res, 200, await authentication.login(input, req.socket.remoteAddress))
+    }
     if (path === '/api/auth/password' && method === 'POST') {
       const user = requireUser(req)
       const input = await body(req)
@@ -342,6 +347,7 @@ const server = http.createServer(async (req, res) => {
         id = String(b.id || '').trim(),
         name = String(b.name || '').trim(),
         department = String(b.department || '').trim()
+      if (/^[a-zA-Z0-9_-]{1,40}$/.test(id)) req.auditAccount = id
       if (!/^[a-zA-Z0-9_-]{1,40}$/.test(id) || !name || name.length > 50 || department.length > 100)
         fail(400, '请填写有效的测试工号和姓名')
       const role = id === process.env.DEV_ADMIN_ID ? 'admin' : 'counselor'
@@ -370,6 +376,10 @@ const server = http.createServer(async (req, res) => {
     const u = requireUser(req)
     if (!['/api/me', '/api/logout'].includes(path) && authentication.mustChange(u.id))
       return send(res, 403, { error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' })
+    if (path === '/api/admin/audit-logs' && method === 'GET') {
+      admin(u)
+      return send(res, 200, audit.list(url))
+    }
     if (path === '/api/proofs' && method === 'POST')
       return send(res, 201, await evidence.upload(req, u, () => requireUser(req)))
     const proofMatch = path.match(/^\/api\/proofs\/([a-f0-9]{48})$/)
@@ -950,7 +960,7 @@ const server = http.createServer(async (req, res) => {
     if (!res.headersSent && !res.destroyed)
       send(res, e.status || 500, { error: e.status ? e.message : '服务器内部错误' })
   }
-})
+}))
 if (require.main === module) {
   const host = process.env.HOST || '127.0.0.1'
   server.listen({ port: Number(process.env.PORT || 3000), host, backlog: 2048 }, () =>

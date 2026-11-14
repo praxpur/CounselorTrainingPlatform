@@ -22,7 +22,8 @@
     "pages/user-import/user-import",
     "pages/attendance/attendance",
     "pages/attendance-manage/attendance-manage",
-    "pages/self-training/self-training"
+    "pages/self-training/self-training",
+    "pages/audit/audit"
   ],
   "window": {
     "navigationBarTextStyle": "black",
