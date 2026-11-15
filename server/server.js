@@ -9,6 +9,7 @@ const { createAttendance } = require('./attendance')
 const { createEvidence, proofList } = require('./evidence')
 const { createAudit } = require('./audit')
 const { createNotifications } = require('./notifications')
+const { createStatistics } = require('./statistics')
 const { pageQuery, mapPage, boundedRows } = require('./pagination')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
@@ -63,6 +64,7 @@ const evidence = createEvidence(db)
 const notifications = createNotifications(db)
 const audit = createAudit(db)
 evidence.preserveExistingProofs()
+const statistics = createStatistics(db)
 const registration = createRegistration(db)
 function body(req) {
   return new Promise((resolve, reject) => {
@@ -320,13 +322,26 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     const u = requireUser(req)
     if (!['/api/me', '/api/logout'].includes(path) && authentication.mustChange(u.id))
       return send(res, 403, { error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' })
-    if (method === 'GET' && ['/api/my/exports/annual','/api/admin/exports/people','/api/admin/exports/ranking'].includes(path)) {
+    if (method === 'GET' && ['/api/my/exports/annual','/api/admin/exports/people','/api/admin/exports/ranking','/api/admin/exports/statistics'].includes(path)) {
       if (path.startsWith('/api/admin/')) admin(u)
       assertExportAvailable()
     }
     if (path === '/api/admin/audit-logs' && method === 'GET') {
       admin(u)
       return send(res, 200, audit.list(url))
+    }
+    if (path === '/api/admin/statistics' && method === 'GET') {
+      admin(u)
+      return send(res,200,statistics.summary(url))
+    }
+    if (path === '/api/admin/statistics/records' && method === 'GET') {
+      admin(u)
+      return send(res,200,statistics.records(url))
+    }
+    if (path === '/api/admin/exports/statistics' && method === 'GET') {
+      admin(u)
+      const report=statistics.exportSheets(url)
+      return await sendWorkbook(res,report.filename,report.sheets)
     }
     if(path==='/api/notifications'&&method==='GET')return send(res,200,notifications.list(u,url))
     if(path==='/api/notifications/unread-count'&&method==='GET')return send(res,200,{unreadCount:notifications.unreadCount(u)})

@@ -39,20 +39,6 @@
             </view>
             <view class="arrow">›</view>
           </navigator>
-          <navigator class="admin-item" url="/pages/stastic/people/people">
-            <view class="admin-icon green">
-              <image
-                class="admin-icon-image"
-                src="/assets/admin/participation.png"
-                mode="aspectFit"
-              ></image>
-            </view>
-            <view class="admin-content">
-              <view class="title">人员报名情况</view>
-              <view class="muted">按人员查看报名和参加记录</view>
-            </view>
-            <view class="arrow">›</view>
-          </navigator>
           <navigator class="admin-item" url="/pages/users/users">
             <view class="admin-icon green">
               <image
@@ -76,8 +62,8 @@
               ></image>
             </view>
             <view class="admin-content">
-              <view class="title">年度统计与排名</view>
-              <view class="muted">查看年度参加次数和学时排名</view>
+              <view class="title">数据统计与排名</view>
+              <view class="muted">按活动、辅导员、学院查看参加情况与年度排行</view>
             </view>
             <view class="arrow">›</view>
           </navigator>

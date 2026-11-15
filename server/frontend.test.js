@@ -59,21 +59,6 @@ test('活动分页追加不重复，切换年份后旧响应不能覆盖新列�
   assert.equal(new Set(list.data.activities.map(value=>value.id)).size,3)
 })
 
-test('返回人员列表后旧的明细请求不能恢复已关闭的详情', async () => {
-  let resolveRecords
-  const {page:people}=page('pages/stastic/people/people.js',{
-    guard:()=>true,error(){},time:()=>'',
-    request:url=>url.includes('person-records')?new Promise(resolve=>{resolveRecords=resolve}):Promise.resolve({rows:[{id:'u1',name:'老师',department:'学院'}],total:1,hasMore:false}),
-  })
-  await people.load()
-  const task=people.select({currentTarget:{dataset:{id:'u1'}}})
-  people.back()
-  resolveRecords({rows:[{id:1}],total:1,hasMore:false})
-  await task
-  assert.equal(people.data.selected,null)
-  assert.equal(people.data.records.length,0)
-})
-
 test('年度明细加载更多保持完整年度汇总，不能按已加载页重算学时', async () => {
   let calls=0
   const {page:annual}=page('pages/my-hours/my-hours.js',{
@@ -433,29 +418,6 @@ test('列表网络错误与空数据区分，重试后恢复', async () => {
   await records.load()
   assert.equal(records.data.errorMessage, '')
   assert.equal(records.data.records.length, 1)
-})
-
-test('年度统计快速切换时旧响应不覆盖新年份，失败后不能导出旧数据', async () => {
-  const pending = []
-  const api = {
-    guard: () => true,
-    error() {},
-    request: () => new Promise((resolve, reject) => pending.push({ resolve, reject })),
-  }
-  const { page: ranking } = page('pages/stastic/ranking/ranking.js', api)
-  ranking.changeYear({ detail: { value: '25' } })
-  ranking.changeYear({ detail: { value: '24' } })
-  pending[1].resolve({ year: 2024, rows: [{ id: 'new' }] })
-  await new Promise(setImmediate)
-  pending[0].resolve({ year: 2025, rows: [{ id: 'old' }] })
-  await new Promise(setImmediate)
-  assert.equal(ranking.data.loadedYear, 2024)
-  assert.equal(ranking.data.rows[0].id, 'new')
-  const refreshing = ranking.load()
-  pending[2].reject(new Error('断网'))
-  await refreshing
-  assert.equal(ranking.data.loadedYear, null)
-  assert.equal(ranking.data.errorMessage, '断网')
 })
 
 test('首页身份确认前隐藏底栏，仅普通用户确认后显示，旧请求不能恢复底栏', async () => {

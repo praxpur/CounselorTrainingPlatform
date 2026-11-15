@@ -1,17 +1,60 @@
 <view class="page-shell">
-  <navigation-bar title="数据统计" back="{{true}}"></navigation-bar>
+  <navigation-bar title="数据统计与排名" back="{{true}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
       <status-panel loading="{{loading}}" error-message="{{errorMessage}}" bindretry="load"></status-panel>
       <block wx:if="{{authorized}}">
-        <navigator class="card" url="/pages/stastic/ranking/ranking">
-          <view class="title">年度学时排名</view>
-          <view class="muted">按年度查看认定学时与排名，导出 Excel</view>
-        </navigator>
-        <navigator class="card" url="/pages/stastic/people/people">
-          <view class="title">人员参加情况</view>
-          <view class="muted">查询人员报名与参加记录，导出汇总和明细</view>
-        </navigator>
+        <view class="statistics-tabs">
+          <view wx:for="{{tabs}}" wx:key="value" class="statistics-tab {{dimension === item.value ? 'selected' : ''}}" data-dimension="{{item.value}}" bindtap="changeDimension">{{item.label}}</view>
+        </view>
+        <view class="statistics-toolbar card">
+          <picker range="{{years}}" value="{{yearIndex}}" bindchange="changeYear" disabled="{{exporting}}"><view class="statistics-year">{{year}} 年 <text class="muted">⌄</text></view></picker>
+          <button class="button-mini primary" size="mini" bindtap="exportData" loading="{{exporting}}" disabled="{{!canExport || loading || exporting || dirty}}">{{selected ? '导出本组数据' : '导出当前统计'}}</button>
+        </view>
+        <view class="statistics-search" wx:if="{{!selected}}">
+          <input placeholder="{{searchPlaceholder}}" value="{{query}}" maxlength="100" bindinput="inputQuery" bindconfirm="search" disabled="{{exporting}}" confirm-type="search" />
+          <button class="button-mini" size="mini" bindtap="search" disabled="{{exporting}}">查询</button>
+        </view>
+        <view class="muted" wx:if="{{dirty}}">搜索内容已修改，请点击查询后再查看或导出。</view>
+        <view class="statistics-breadcrumb" wx:if="{{selected}}">
+          <button class="button-mini" size="mini" bindtap="back" disabled="{{exporting}}">返回{{dimensionLabel}}列表</button>
+          <view class="title">{{selected.name}}</view>
+          <view class="muted" wx:if="{{selected.sourceLabel}}">{{selected.sourceLabel}}</view>
+        </view>
+        <view class="statistics-summary">
+          <view class="summary-item"><view class="summary-number">{{totals.recordCount}}</view><view class="muted">报名 / 提交记录</view></view>
+          <view class="summary-item"><view class="summary-number">{{totals.attendedCount}}</view><view class="muted">已认定参加</view></view>
+          <view class="summary-item"><view class="summary-number">{{totals.pendingCount}}</view><view class="muted">待认定 / 待审核</view></view>
+          <view class="summary-item"><view class="summary-number">{{totals.totalHours}}</view><view class="muted">认定学时</view></view>
+        </view>
+        <view class="muted statistics-note">按活动开始日期（自行培训按参加日期）归属年度；学院按当前人员名单归属。取消、驳回及未认定记录不计学时。导出包含当前筛选的全部汇总和明细。</view>
+        <view wx:if="{{!selected}}">
+          <view class="card statistics-row" wx:for="{{rows}}" wx:key="rowKey" data-key="{{item.key}}" bindtap="select">
+            <view class="statistics-heading">
+              <view class="statistics-name"><text class="rank-number" wx:if="{{dimension === 'ranking'}}">第 {{item.rank}} 名</text><text class="title">{{item.name}}</text></view>
+              <text class="statistics-hours">{{item.totalHours}} 学时</text>
+            </view>
+            <view class="muted" wx:if="{{dimension === 'activity'}}">{{item.sourceLabel}} · {{item.timeText}} {{item.status === 'cancelled' ? '· 活动已取消' : ''}}</view>
+            <view class="muted" wx:if="{{dimension === 'counselor' || dimension === 'ranking'}}">工号 {{item.id}} · {{item.department}}{{item.enabled === 0 ? ' · 已停用' : ''}}</view>
+            <view class="muted" wx:if="{{dimension === 'department'}}">辅导员 {{item.counselorCount}} 人 · 有记录 {{item.participantCount}} 人</view>
+            <view class="statistics-counts">记录 {{item.recordCount}} · 已认定 {{item.attendedCount}} · 待认定 {{item.pendingCount}}</view>
+            <view class="muted">驳回 {{item.rejectedCount}} · 取消 {{item.cancelledCount}} <text class="statistics-detail" wx:if="{{dimension !== 'ranking'}}">查看参加明细 ›</text></view>
+          </view>
+        </view>
+        <view wx:else>
+          <view class="card" wx:for="{{rows}}" wx:key="rowKey">
+            <view class="statistics-heading"><view class="title">{{item.title}}</view><text class="statistics-hours">{{item.recognizedHours}} 学时</text></view>
+            <view class="line">{{item.name}} · 工号 {{item.userId}}</view>
+            <view class="muted">{{item.department}} · {{item.sourceLabel}} · {{item.timeText}}</view>
+            <view class="line">{{item.statusLabel}}</view>
+          </view>
+        </view>
+        <view class="empty" wx:if="{{!loading && !errorMessage && !dirty && !rows.length}}">该年度暂无符合条件的{{selected ? '参加记录' : '统计数据'}}</view>
+        <view class="muted" wx:if="{{rows.length}}">显示第 {{displayFrom}}—{{displayTo}} 条，共 {{total}} 条</view>
+        <view class="statistics-pages">
+          <button wx:if="{{previousOffset !== null}}" bindtap="previous" disabled="{{loading || exporting || dirty}}">上一页</button>
+          <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading || exporting || dirty}}">加载更多</button>
+        </view>
       </block>
     </view>
   </scroll-view>
