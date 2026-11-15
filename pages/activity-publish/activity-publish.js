@@ -129,7 +129,7 @@ Page({
       this.saved = true
       wx.navigateBack({
         success: () => wx.showToast({ title: this.data.editing ? '修改成功' : '发布成功' }),
-        fail: () => wx.redirectTo({ url: '/pages/admin/admin' }),
+        fail: () => wx.redirectTo({ url: '/pages/activity-manage/activity-manage' }),
       })
     } catch (error) {
       api.error(error)

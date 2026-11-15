@@ -1,7 +1,7 @@
 <view class="school-brand">
-  <image class="school-seal" src="/assets/brand/ujn-seal.png" mode="aspectFit"></image>
-  <view class="school-brand-copy">
-    <view class="school-brand-subtitle">{{subtitle}}</view>
-    <view class="school-brand-title">{{title}}</view>
+  <image class="ujn-logo" src="/assets/brand/ujn-logo.png" mode="aspectFit"></image>
+  <view>
+    <view class="subtitle">{{subtitle}}</view>
+    <view class="title">{{title}}</view>
   </view>
 </view>

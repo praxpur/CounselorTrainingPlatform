@@ -4,6 +4,34 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 
+test('旧管理和统计入口保持注册并跳转到当前页面，失败时有回退',()=>{
+  const routes=JSON.parse(fs.readFileSync(path.join(__dirname,'../app.json'),'utf8')).pages
+  for(const [route,target] of [['pages/admin/admin','/pages/activity-manage/activity-manage'],['pages/people/people','/pages/stastic/people/people'],['pages/ranking/ranking','/pages/stastic/ranking/ranking']]){
+    assert.ok(routes.includes(route))
+    let redirected,relaunched
+    const {page:entry}=page(route+'.js',{}, {
+      redirectTo:options=>{redirected=options.url;options.fail()},reLaunch:options=>{relaunched=options.url},
+    })
+    entry.onLoad()
+    assert.equal(redirected,target);assert.equal(relaunched,target)
+  }
+})
+
+test('注册页面、字面量品牌资源完整，运维目录排除出小程序包',()=>{
+  const root=path.join(__dirname,'..'),config=JSON.parse(fs.readFileSync(path.join(root,'app.json'),'utf8'))
+  for(const route of config.pages)for(const ext of ['.js','.json','.wxml','.wxss'])assert.ok(fs.existsSync(path.join(root,route+ext)),route+ext)
+  for(const folder of ['pages','components']){
+    const inspect=directory=>{for(const entry of fs.readdirSync(directory,{withFileTypes:true})){
+      const file=path.join(directory,entry.name)
+      if(entry.isDirectory())inspect(file)
+      else if(file.endsWith('.wxml'))for(const match of fs.readFileSync(file,'utf8').matchAll(/\bsrc="(\/assets\/[^"{}]+)"/g))assert.ok(fs.existsSync(path.join(root,match[1])),file+': '+match[1])
+    }}
+    inspect(path.join(root,folder))
+  }
+  const packed=JSON.parse(fs.readFileSync(path.join(root,'project.config.json'),'utf8')).packOptions.ignore
+  for(const value of ['server','deploy','docs','tmp'])assert.ok(packed.some(item=>item.type==='folder'&&item.value===value),value)
+})
+
 test('活动分页追加不重复，切换年份后旧响应不能覆盖新列表', async () => {
   const pending=[]
   const {page:list}=page('pages/course/list.js',{
@@ -430,44 +458,53 @@ test('年度统计快速切换时旧响应不覆盖新年份，失败后不能�
   assert.equal(ranking.data.errorMessage, '断网')
 })
 
-test('字体下载失败后节流重试，字体错误不应中断 API 数据请求', async () => {
-  let now = 0
-  const requests = []
-  const sandbox = {
-    require: () => '王',
-    module: { exports: {} },
-    Set,
-    Date: { now: () => now },
-    console: { warn() {} },
-    wx: { loadFontFace: (value) => requests.push(value) },
+test('首页身份确认前隐藏底栏，仅普通用户确认后显示，旧请求不能恢复底栏', async () => {
+  const pending = []
+  const changes = []
+  const api = {
+    guard: () => true,
+    error() {},
+    format: value => value,
+    request: url => url === '/api/me'
+      ? new Promise((resolve, reject) => pending.push({resolve, reject}))
+      : Promise.resolve(url === '/api/admin/review-count' ? {pendingCount:0} : []),
   }
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../utils/fonts.js'), 'utf8'), sandbox)
-  const ensure = sandbox.module.exports.ensureFontForText
-  ensure({ name: '龘' }, 'http://localhost')
-  requests[0].fail(new Error('offline'))
-  ensure({ name: '龘' }, 'http://localhost')
-  assert.equal(requests.length, 1)
-  now = 31000
-  ensure({ name: '龘' }, 'http://localhost')
-  assert.equal(requests.length, 2)
-  requests[1].success()
-  ensure({ name: '龘' }, 'http://localhost')
-  assert.equal(requests.length, 2)
-  const store = { exports: {} }
-  vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../utils/store.js'), 'utf8'), {
-    require: () => ({
-      ensureFontForText: () => {
-        throw new Error('unsupported font')
-      },
-    }),
-    module: store,
-    Date,
-    console: { warn() {} },
-    wx: {
-      getStorageSync: () => 'token',
-      request: (request) => request.success({ statusCode: 200, data: { ok: true } }),
-    },
+  const {page: home} = page('pages/index/index.js', api, {
+    hideTabBar: () => changes.push('hide'),
+    showTabBar: () => changes.push('show'),
   })
-  assert.equal((await store.exports.request('/test')).ok, true)
-  assert.equal(store.exports.time(Date.parse('2024-12-31T23:30:00Z')), '2025-01-01 07:30')
+  home.onLoad()
+  assert.deepEqual(changes, ['hide'])
+  const adminLoading = home.onShow()
+  assert.equal(changes.at(-1), 'hide')
+  assert.ok(!changes.includes('show'))
+  pending.shift().resolve({role:'admin'})
+  await adminLoading
+  assert.ok(!changes.includes('show'))
+  home.onHide()
+
+  const userLoading = home.onShow()
+  assert.equal(changes.at(-1), 'hide')
+  pending.shift().resolve({role:'counselor'})
+  await userLoading
+  assert.equal(changes.at(-1), 'show')
+
+  const staleLoading = home.onShow()
+  const stale = pending.shift()
+  home.onHide()
+  const currentLoading = home.onShow()
+  pending.shift().resolve({role:'admin'})
+  await currentLoading
+  stale.resolve({role:'counselor'})
+  await staleLoading
+  assert.equal(changes.at(-1), 'hide')
+  assert.equal(home.data.user.role, 'admin')
+  home.onHide()
+
+  const offlineLoading = home.onShow()
+  pending.shift().reject(new Error('网络不可用'))
+  await offlineLoading
+  assert.equal(changes.at(-1), 'hide')
+  assert.equal(home.data.errorMessage, '网络不可用')
+  home.onHide()
 })

@@ -1,13 +1,9 @@
-@import "assets/fonts/noto-sans-sc.wxss";
-
-/* 常用字离线加载；生僻字使用同源后端按需提供的完整 Noto SC 字体。 */
 page {
   display: flex;
   flex-direction: column;
   height: 100%;
   background: #f5f6fa;
   color: #252a3a;
-  font-family: "Campus Noto SC", "Campus Noto SC Full", sans-serif;
   font-size: 28rpx;
   line-height: 1.6;
 }

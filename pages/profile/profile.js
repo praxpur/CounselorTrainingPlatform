@@ -18,9 +18,6 @@ Page({
       this.setData({ loading: false })
     }
   },
-  admin() {
-    wx.navigateTo({ url: '/pages/admin/admin' })
-  },
   logout() {
     wx.showModal({
       title: '退出登录',

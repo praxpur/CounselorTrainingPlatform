@@ -71,7 +71,7 @@
             <view class="admin-icon orange">
               <image
                 class="admin-icon-image"
-                src="/assets/admin/ranking.png"
+                src="/assets/admin/static.png"
                 mode="aspectFit"
               ></image>
             </view>

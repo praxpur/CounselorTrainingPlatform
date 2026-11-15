@@ -29,14 +29,14 @@ function addSheet(workbook, name, columns, rows) {
   sheet.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: columns.length } }
   sheet.getRow(1).height = 28
   sheet.getRow(1).eachCell((cell) => {
-    cell.font = { name: 'Noto Sans CJK SC', bold: true, color: { argb: 'FFFFFFFF' } }
+    cell.font = { bold: true, color: { argb: 'FFFFFFFF' } }
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF25489C' } }
   })
   sheet.eachRow((row, index) => {
     if (index === 1) return
     let lines = 1
     row.eachCell((cell) => {
-      cell.font = { name: 'Noto Sans CJK SC', size: 11 }
+      cell.font = { size: 11 }
       cell.alignment = { vertical: 'top', wrapText: true }
       if (typeof cell.value === 'string') {
         // XLSX 字符串单元格不会作为公式执行；显式文本格式也保留前导零。

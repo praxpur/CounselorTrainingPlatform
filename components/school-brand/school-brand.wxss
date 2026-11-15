@@ -2,23 +2,21 @@
   display: flex;
   align-items: center;
   padding: 24rpx 0;
-}
-.school-seal {
-  width: 104rpx;
-  height: 104rpx;
-  flex-shrink: 0;
-  margin-right: 24rpx;
-}
-.school-brand-copy {
   flex: 1;
   min-width: 0;
 }
-.school-brand-subtitle {
+.ujn-logo {
+  width: 104rpx;
+  height: 104rpx;
+  flex-shrink: 1;
+  margin-right: 30rpx;
+}
+.subtitle {
   color: #64748b;
   font-size: 24rpx;
   line-height: 1.5;
 }
-.school-brand-title {
+.title {
   color: #25489c;
   font-size: 36rpx;
   line-height: 1.5;

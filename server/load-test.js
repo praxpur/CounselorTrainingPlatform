@@ -1,5 +1,5 @@
 // 隔离服务进程与临时磁盘 WAL；所有请求零重试，绝不读取实际 training.db。
-const http=require('node:http'),net=require('node:net'),fs=require('node:fs/promises'),syncFs=require('node:fs')
+const http=require('node:http'),fs=require('node:fs/promises'),syncFs=require('node:fs')
 const path=require('node:path'),os=require('node:os'),crypto=require('node:crypto')
 const {fork}=require('node:child_process'),{performance}=require('node:perf_hooks')
 function options(argv){
@@ -51,7 +51,7 @@ async function main(argv=process.argv.slice(2),{forkFixture=fork,shutdownTimeout
     if(failure)throw failure
     const responses=await Promise.all(tokens.map(token=>new Promise(resolve=>{
       const start=performance.now();let done=false,timer
-      const finish=(status,valid=true)=>{if(done)return;done=true;clearTimeout(timer);resolve({status,valid,ms:performance.now()-start})}
+      const finish=(status,valid=true)=>{if(done)return;done=true;clearTimeout(timer);resolve({status,valid,reused:request.reusedSocket===true,ms:performance.now()-start})}
       const request=http.request({host:'127.0.0.1',port,path:route,method,agent,headers:token?{authorization:'Bearer '+token}:{}},response=>{
         const chunks=[];let bytes=0
         response.on('data',chunk=>{bytes+=chunk.length;if(bytes>262144)request.destroy(Object.assign(new Error('body limit'),{code:'BODY_TOO_LARGE'}));else chunks.push(chunk)})
@@ -68,8 +68,10 @@ async function main(argv=process.argv.slice(2),{forkFixture=fork,shutdownTimeout
     const statuses={},timings=responses.map(row=>row.ms).sort((a,b)=>a-b)
     for(const row of responses)statuses[row.status]=(statuses[row.status]||0)+1
     const quantile=q=>Math.round(timings[Math.max(0,Math.ceil(timings.length*q)-1)])
-    const passed=Object.entries(expected).every(([status,count])=>(statuses[status]||0)===count)&&responses.every(row=>row.valid)&&Object.keys(statuses).every(status=>Object.hasOwn(expected,status))
-    const metric={phase:name,concurrentUsers:config.users,statuses,httpResponseRate:responses.filter(row=>typeof row.status==='number').length/config.users,validBodyRate:responses.filter(row=>row.valid).length/config.users,p50Ms:quantile(.5),p95Ms:quantile(.95),p99Ms:quantile(.99),maxMs:quantile(1),passed}
+    const reusedConnections=responses.filter(row=>row.reused).length
+    const connectionValid=config.cold||phases.length>0||reusedConnections===config.users
+    const passed=connectionValid&&Object.entries(expected).every(([status,count])=>(statuses[status]||0)===count)&&responses.every(row=>row.valid)&&Object.keys(statuses).every(status=>Object.hasOwn(expected,status))
+    const metric={phase:name,concurrentUsers:config.users,reusedConnections,statuses,httpResponseRate:responses.filter(row=>typeof row.status==='number').length/config.users,validBodyRate:responses.filter(row=>row.valid).length/config.users,p50Ms:quantile(.5),p95Ms:quantile(.95),p99Ms:quantile(.99),maxMs:quantile(1),passed}
     phases.push(metric);log(metric)
     if(!passed)throw new Error(name+' 未达到预期，零重试')
   }
@@ -110,10 +112,19 @@ async function main(argv=process.argv.slice(2),{forkFixture=fork,shutdownTimeout
     }
     totalTimer=setTimeout(()=>interrupt('TIMEOUT'),120000)
     if(!config.cold){
-      for(let i=0;i<config.users;i+=25)await Promise.all(Array.from({length:Math.min(25,config.users-i)},()=>new Promise((resolve,reject)=>{
-        const socket=net.createConnection({host:'127.0.0.1',port});sockets.push(socket);socket.once('error',reject);socket.setTimeout(15000,()=>{socket.destroy();reject(new Error('预连接超时'))})
-        socket.once('connect',()=>{socket.setTimeout(0);agent.emit('free',socket,{host:'127.0.0.1',port});resolve()})
+      await Promise.all(Array.from({length:config.users},()=>new Promise((resolve,reject)=>{
+        const request=http.get({host:'127.0.0.1',port,path:'/health',agent},response=>{
+          response.resume()
+          response.once('end',()=>response.statusCode===200?resolve():reject(new Error('预连接健康检查失败')))
+          response.once('error',reject)
+        })
+        const timer=setTimeout(()=>request.destroy(new Error('预连接超时')),15000)
+        request.once('close',()=>clearTimeout(timer));request.once('error',reject)
       })))
+      await new Promise(setImmediate)
+      const pooledSockets=Object.values(agent.freeSockets).reduce((sum,list)=>sum+list.length,0)
+      if(pooledSockets!==config.users)throw new Error('HTTP预热未保留足够的可复用连接')
+      log({type:'preconnection',warmupRequests:config.users,pooledSockets})
     }
     log({type:'scenario',mode:config.probe?'bare-http':'business',connectionMode:config.cold?'cold-burst':'preconnected',sameProcess:config.sameProcess,registerFirst:config.registerFirst,capacity:config.probe?null:config.unlimited?'unlimited':capacity})
     if(config.probe){await phase('bare-http','/','GET',{200:config.users},text=>text==='ok')}

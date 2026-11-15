@@ -6,13 +6,11 @@
     "pages/record/record",
     "pages/profile/profile",
     "pages/login/login",
-    "pages/admin/admin",
+    "pages/activity-manage/activity-manage",
     "pages/activity-publish/activity-publish",
     "pages/attendees/attendees",
-    "pages/people/people",
     "pages/experiences/experiences",
     "pages/reviews/reviews",
-    "pages/ranking/ranking",
     "pages/users/users",
     "pages/my-hours/my-hours",
     "pages/stastic/static",
@@ -24,11 +22,12 @@
     "pages/attendance-manage/attendance-manage",
     "pages/self-training/self-training",
     "pages/audit/audit",
-    "pages/activity-manage/activity-manage",
-    "pages/notifications/notifications"
+    "pages/notifications/notifications",
+    "pages/admin/admin",
+    "pages/people/people",
+    "pages/ranking/ranking"
   ],
   "window": {
-    "navigationBarTextStyle": "black",
     "navigationStyle": "custom"
   },
   "tabBar": {
@@ -44,13 +43,13 @@
       },
       {
         "pagePath": "pages/course/list",
-        "text": "培训活动",
+        "text": "活动中心",
         "iconPath": "assets/tabbar/activity-normal.png",
         "selectedIconPath": "assets/tabbar/activity-active.png"
       },
       {
         "pagePath": "pages/record/record",
-        "text": "培训记录",
+        "text": "活动记录",
         "iconPath": "assets/tabbar/record-normal.png",
         "selectedIconPath": "assets/tabbar/record-active.png"
       },
@@ -63,13 +62,6 @@
     ]
   },
   "style": "v2",
-  "usingComponents": {
-    "status-panel": "/components/status-panel/status-panel",
-    "notification-entry": "/components/notification-entry/notification-entry"
-  },
-  "renderer": "webview",
-  "sitemapLocation": "sitemap.json",
-  "lazyCodeLoading": "requiredComponents",
   "permission": {
     "scope.userLocation": {
       "desc": "用于活动现场定位签到、签退和管理员选择活动地点"
@@ -78,5 +70,12 @@
   "requiredPrivateInfos": [
     "getLocation",
     "chooseLocation"
-  ]
+  ],
+  "usingComponents": {
+    "notification-entry": "/components/notification-entry/notification-entry",
+    "status-panel": "/components/status-panel/status-panel"
+  },
+  "renderer": "webview",
+  "sitemapLocation": "sitemap.json",
+  "lazyCodeLoading": "requiredComponents"
 }

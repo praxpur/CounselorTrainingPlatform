@@ -29,6 +29,7 @@ test('生产环境拒绝同一正式账号曾获取的开发会话，正式签�
   const original=process.env.NODE_ENV
   process.env.NODE_ENV='production'
   try{
+    assert.equal((await call('/api/auth/unknown')).status,404)
     assert.equal((await call('/api/me','GET',null,dev.body.token)).status,401)
     assert.equal((await call('/api/activities','GET',null,dev.body.token)).status,401)
     const official=await call('/api/auth/login','POST',{id:'staff',password:oldPassword})

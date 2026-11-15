@@ -12,72 +12,35 @@ const { createNotifications } = require('./notifications')
 const { pageQuery, mapPage, boundedRows } = require('./pagination')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
-const pathModule = require('node:path')
-let fullFontPromise
 const { DatabaseSync } = require('node:sqlite')
 const db = new DatabaseSync(
   process.env.DB_PATH || require('node:path').join(__dirname, 'training.db'),
 )
 db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
-CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT NOT NULL, department TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','counselor')));
+CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT NOT NULL, department TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','counselor')), enabled INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS activities(id INTEGER PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, location TEXT NOT NULL, starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, capacity INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'published', created_at INTEGER NOT NULL);
-CREATE TABLE IF NOT EXISTS registrations(activity_id INTEGER NOT NULL REFERENCES activities(id), user_id TEXT NOT NULL REFERENCES users(id), registered_at INTEGER NOT NULL, checked_in_at INTEGER, checked_in_by TEXT REFERENCES users(id), PRIMARY KEY(activity_id,user_id));
+CREATE TABLE IF NOT EXISTS activities(id INTEGER PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL, location TEXT NOT NULL, starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, capacity INTEGER NOT NULL, status TEXT NOT NULL DEFAULT 'published', created_at INTEGER NOT NULL, credit_hours REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS registrations(activity_id INTEGER NOT NULL REFERENCES activities(id), user_id TEXT NOT NULL REFERENCES users(id), registered_at INTEGER NOT NULL, confirmed_at INTEGER, confirmed_by TEXT REFERENCES users(id), credited_hours REAL NOT NULL DEFAULT 0, PRIMARY KEY(activity_id,user_id));
+CREATE TABLE IF NOT EXISTS experiences(id INTEGER PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), activity_id INTEGER NOT NULL REFERENCES activities(id), title TEXT NOT NULL, organizer TEXT NOT NULL, occurred_on TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', credit_hours REAL NOT NULL DEFAULT 0, reviewed_by TEXT REFERENCES users(id), reviewed_at INTEGER, review_note TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
 CREATE INDEX IF NOT EXISTS registration_user ON registrations(user_id);`)
 migrateCreditUnits(db)
 ensureRegistrationSchema(db)
-const get = (sql, ...args) => db.prepare(sql).get(...args)
-if (
-  !db
-    .prepare('PRAGMA table_info(users)')
-    .all()
-    .some((c) => c.name === 'enabled')
-)
-  db.exec('ALTER TABLE users ADD COLUMN enabled INTEGER NOT NULL DEFAULT 1')
-if (
-  !db
-    .prepare('PRAGMA table_info(activities)')
-    .all()
-    .some((c) => c.name === 'credit_hours')
-)
-  db.exec('ALTER TABLE activities ADD COLUMN credit_hours REAL NOT NULL DEFAULT 0')
-if (
-  !db
-    .prepare('PRAGMA table_info(registrations)')
-    .all()
-    .some((c) => c.name === 'credited_hours')
-)
-  db.exec('ALTER TABLE registrations ADD COLUMN credited_hours REAL NOT NULL DEFAULT 0')
-db.exec(
-  "CREATE TABLE IF NOT EXISTS experiences(id INTEGER PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), title TEXT NOT NULL, organizer TEXT NOT NULL, occurred_on TEXT NOT NULL, description TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', credit_hours REAL NOT NULL DEFAULT 0, reviewed_by TEXT REFERENCES users(id), reviewed_at INTEGER, review_note TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)",
-)
-if (
-  !db
-    .prepare('PRAGMA table_info(registrations)')
-    .all()
-    .some((c) => c.name === 'confirmed_at')
-)
-  db.exec('ALTER TABLE registrations ADD COLUMN confirmed_at INTEGER')
-if (
-  !db
-    .prepare('PRAGMA table_info(registrations)')
-    .all()
-    .some((c) => c.name === 'confirmed_by')
-)
-  db.exec('ALTER TABLE registrations ADD COLUMN confirmed_by TEXT')
-if (
-  !db
-    .prepare('PRAGMA table_info(experiences)')
-    .all()
-    .some((c) => c.name === 'activity_id')
-)
-  db.exec('ALTER TABLE experiences ADD COLUMN activity_id INTEGER REFERENCES activities(id)')
+// SQL 文本固定；缓存编译结果，避免每个请求重复 prepare。
+const statements = new Map()
+function statement(sql) {
+  if (!statements.has(sql)) {
+    if (statements.size >= 128) statements.delete(statements.keys().next().value)
+    statements.set(sql, db.prepare(sql))
+  }
+  return statements.get(sql)
+}
+const get = (sql, ...args) => statement(sql).get(...args)
 db.exec(`CREATE INDEX IF NOT EXISTS experience_user_activity ON experiences(user_id,activity_id,created_at DESC,id DESC);
 CREATE INDEX IF NOT EXISTS experience_status ON experiences(status,created_at);
 CREATE INDEX IF NOT EXISTS session_expiry ON sessions(expires);
 CREATE INDEX IF NOT EXISTS activity_start ON activities(starts_at);`)
-const all = (sql, ...args) => db.prepare(sql).all(...args)
-const run = (sql, ...args) => db.prepare(sql).run(...args)
+const all = (sql, ...args) => statement(sql).all(...args)
+const run = (sql, ...args) => statement(sql).run(...args)
 const fail = (status, message) => {
   const e = new Error(message)
   e.status = status
@@ -320,33 +283,6 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       const result = await authentication.changePassword(user, input, req.socket.remoteAddress, () => requireUser(req))
       return send(res, 200, result)
     }
-    if (path === '/fonts/noto-sans-sc-full.woff2' && method === 'GET') {
-      if (!fullFontPromise)
-        fullFontPromise = fs
-          .readFile(pathModule.join(__dirname, 'fonts/noto-sans-sc-full.woff2'))
-          .then((buffer) => ({ buffer, etag: '"' + hash(buffer) + '"' }))
-          .catch((error) => {
-            fullFontPromise = null
-            throw error
-          })
-      const { buffer, etag } = await fullFontPromise
-      if (req.headers['if-none-match'] === etag) {
-        res.writeHead(304, {
-          ETag: etag,
-          'Access-Control-Allow-Origin': '*',
-          'Cache-Control': 'public, max-age=86400',
-        })
-        return res.end()
-      }
-      res.writeHead(200, {
-        'Content-Type': 'font/woff2',
-        'Content-Length': buffer.length,
-        ETag: etag,
-        'Access-Control-Allow-Origin': '*',
-        'Cache-Control': 'public, max-age=86400',
-      })
-      return res.end(buffer)
-    }
     // This is deliberately disabled in production. Replace with a verified school identity exchange.
     if (path === '/api/auth/dev' && method === 'POST') {
       if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DEV_LOGIN !== '1')
@@ -380,7 +316,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       const user = get('SELECT id,name,department,role FROM users WHERE id=?', id)
       return send(res, 200, { token, user })
     }
-    if (path.startsWith('/api/auth/')) fail(503, '正式身份认证尚未配置')
+    if (path.startsWith('/api/auth/')) fail(404, '接口不存在')
     const u = requireUser(req)
     if (!['/api/me', '/api/logout'].includes(path) && authentication.mustChange(u.id))
       return send(res, 403, { error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' })
@@ -639,11 +575,10 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
         fail(400, '请填写有效的审核结果或驳回原因')
       db.exec('BEGIN IMMEDIATE')
       try {
-        const exp = get('SELECT * FROM experiences WHERE id=?', Number(reviewMatch[1]))
+        const exp = get('SELECT * FROM experiences WHERE id=? AND activity_id IS NOT NULL', Number(reviewMatch[1]))
         if (!exp || exp.status !== 'pending') fail(409, '记录不存在或已审核')
-        const a = exp.activity_id ? activity(exp.activity_id, { id: exp.user_id }) : null
+        const a = activity(exp.activity_id, { id: exp.user_id })
         if (status === 'approved') {
-          if (!a) fail(409, '旧版记录未关联活动，可驳回后让老师重新提交')
           if (a.status !== 'published' || !a.registered) fail(409, '活动已取消或报名不存在')
           if (a.starts_at > Date.now()) fail(409, '活动尚未开始，不能确认参加')
           evidence.preventDuplicateCredit(a, exp.user_id)
@@ -965,7 +900,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
 }))
 if (require.main === module) {
   const host = process.env.HOST || '127.0.0.1'
-  server.listen({ port: Number(process.env.PORT || 3000), host, backlog: 2048 }, () =>
+  server.listen({ port: Number(process.env.PORT || 3000), host, backlog: Number(process.env.LISTEN_BACKLOG || 2048) }, () =>
     console.log(`Listening on ${host}:${server.address().port}`),
   )
 }

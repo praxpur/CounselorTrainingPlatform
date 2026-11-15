@@ -282,7 +282,6 @@ test('活动管理、权限和并发报名', async () => {
   const exported = new ExcelJS.Workbook()
   await exported.xlsx.load(Buffer.from(await exportResponse.arrayBuffer()))
   const rankingSheet = exported.worksheets[0]
-  assert.equal(rankingSheet.getCell('A1').font.name, 'Noto Sans CJK SC')
   const exportedPerson = rankingSheet
     .getRows(2, rankingSheet.rowCount - 1)
     .find((row) => row.getCell(2).value === who)
@@ -495,15 +494,6 @@ test('活动管理、权限和并发报名', async () => {
   assert.equal(yearActivities.body[0].startsAt, Date.parse('2025-01-01T00:30:00+08:00'))
   assert.equal((await call('/api/activities?year=2024', 'GET', null, user)).body.length, 1)
   assert.equal((await call('/api/activities?year=invalid', 'GET', null, user)).status, 400)
-  const fontResponse = await fetch(base + '/fonts/noto-sans-sc-full.woff2')
-  assert.equal(fontResponse.status, 200)
-  assert.equal(fontResponse.headers.get('content-type'), 'font/woff2')
-  const fontBytes = Buffer.from(await fontResponse.arrayBuffer())
-  assert.equal(fontBytes.toString('ascii', 0, 4), 'wOF2')
-  const cachedFont = await fetch(base + '/fonts/noto-sans-sc-full.woff2', {
-    headers: { 'if-none-match': fontResponse.headers.get('etag') },
-  })
-  assert.equal(cachedFont.status, 304)
   const utf8Payload = { id: 'utf8-user', name: '测试姓名', department: '学院' }
   const utf8Bytes = Buffer.from(JSON.stringify(utf8Payload))
   const utf8Request = streamedRequest(
@@ -568,34 +558,6 @@ test('活动管理、权限和并发报名', async () => {
       .prepare("SELECT COUNT(*) count FROM experiences WHERE user_id='staff001' AND activity_id=?")
       .get(raceId).count,
     0,
-  )
-  const legacy = db
-    .prepare(
-      "INSERT INTO experiences(user_id,title,organizer,occurred_on,description,created_at) VALUES(?,'旧经历','旧系统','2026-01-01','未关联活动',?)",
-    )
-    .run('user', Date.now())
-  const legacyId = Number(legacy.lastInsertRowid)
-  assert.equal(
-    (
-      await call(
-        '/api/admin/experiences/' + legacyId + '/review',
-        'POST',
-        { status: 'approved' },
-        admin,
-      )
-    ).status,
-    409,
-  )
-  assert.equal(
-    (
-      await call(
-        '/api/admin/experiences/' + legacyId + '/review',
-        'POST',
-        { status: 'rejected', note: '请关联正确活动重新提交' },
-        admin,
-      )
-    ).status,
-    200,
   )
   for (let index = 0; index < 1001; index++)
     db.prepare("INSERT INTO users(id,name,department,role) VALUES(?,?,?,'counselor')").run(

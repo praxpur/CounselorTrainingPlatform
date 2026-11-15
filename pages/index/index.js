@@ -2,37 +2,49 @@ const api = require('../../utils/store')
 
 Page({
   data: { user: null, activities: [], loading: true, pendingCount: 0, errorMessage: '' },
+  onLoad() {
+    // 首页兼作管理员工作台，身份确认前不能展示辅导员导航。
+    wx.hideTabBar({ animation: false })
+  },
   async onShow() {
+    wx.hideTabBar({ animation: false })
+    const requestId = (this.requestId || 0) + 1
+    this.requestId = requestId
     this.pageVisible = true
     this.stopReviewTimer()
     if (!api.guard()) return
     this.setData({ loading: true, errorMessage: '', user: null, activities: [] })
     try {
       const user = await api.request('/api/me')
+      if (!this.pageVisible || this.requestId !== requestId) return
       if (user.role === 'admin') {
         wx.hideTabBar({ animation: false })
         this.setData({ user, loading: false })
         const refreshed = await this.refreshReviewCount()
-        if (refreshed && this.pageVisible)
+        if (refreshed && this.pageVisible && this.requestId === requestId)
           this.reviewTimer = setInterval(() => this.refreshReviewCount(), 30000)
       } else {
         wx.showTabBar({ animation: false })
         this.setData({ user })
         const result = await api.request('/api/activities?limit=5&offset=0')
         const activities = Array.isArray(result) ? result : result.rows
+        if (!this.pageVisible || this.requestId !== requestId) return
         this.setData({ activities: activities.slice(0, 5).map(api.format), loading: false })
       }
     } catch (e) {
+      if (!this.pageVisible || this.requestId !== requestId) return
       this.setData({ loading: false, errorMessage: e.message })
       api.error(e)
     }
   },
   onHide() {
     this.pageVisible = false
+    this.requestId = (this.requestId || 0) + 1
     this.stopReviewTimer()
   },
   onUnload() {
     this.pageVisible = false
+    this.requestId = (this.requestId || 0) + 1
     this.stopReviewTimer()
   },
   stopReviewTimer() {

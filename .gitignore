@@ -4,7 +4,6 @@ node_modules/
 .format-tools/
 tmp/
 coverage/
-UI/*.pdf
 server/.font-tools/
 server/.pip-cache/
 server/.pip-temp/

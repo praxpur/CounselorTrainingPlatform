@@ -25,7 +25,10 @@
   "simulatorPluginLibVersion": {},
   "packOptions": {
     "ignore": [
-      { "type": "folder", "value": "docs" },
+      {
+        "type": "folder",
+        "value": "docs"
+      },
       {
         "type": "folder",
         "value": "scripts"
@@ -45,6 +48,10 @@
       {
         "type": "folder",
         "value": ".format-tools"
+      },
+      {
+        "type": "folder",
+        "value": "deploy"
       }
     ],
     "include": []
