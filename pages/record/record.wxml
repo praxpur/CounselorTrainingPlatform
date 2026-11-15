@@ -38,7 +38,6 @@
         </view>
       </view>
       <view class="muted">报名、培训经历与审核结果在此统一查看。</view>
-      <navigator class="card" url="/pages/self-training/self-training">提交自行参加的培训活动 ›</navigator>
       <view class="card" wx:for="{{records}}" wx:key="id">
         <view class="record-header">
           <view class="title">{{item.title}}</view>

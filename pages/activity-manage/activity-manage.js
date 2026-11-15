@@ -25,6 +25,9 @@ Page({
   attendees(event) {
     wx.navigateTo({ url: '/pages/attendees/attendees?id=' + event.currentTarget.dataset.id })
   },
+  attendanceSettings(event) {
+    wx.navigateTo({ url: '/pages/attendance-manage/attendance-manage?id=' + event.currentTarget.dataset.id })
+  },
   cancel(e) {
     const id = e.currentTarget.dataset.id
     wx.showModal({

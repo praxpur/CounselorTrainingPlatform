@@ -1,5 +1,5 @@
 <view class="page-shell">
-  <navigation-bar title="培训活动" back="{{false}}"></navigation-bar>
+  <navigation-bar title="活动中心" back="{{false}}"></navigation-bar>
   <scroll-view scroll-y class="screen">
     <view class="container">
       <status-panel
@@ -7,6 +7,10 @@
         error-message="{{errorMessage}}"
         bindretry="load"
       ></status-panel>
+      <navigator class="card" wx:if="{{isCounselor}}" url="/pages/self-training/self-training">
+        <view class="title">提交自行参加的活动 ›</view>
+        <view class="muted">平台之外的培训，可上传参加证明并申请学时。</view>
+      </navigator>
       <picker
         class="activity-year"
         mode="selector"

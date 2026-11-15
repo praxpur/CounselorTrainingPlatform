@@ -15,8 +15,8 @@
         <view class="muted">辅导员</view>
       </view>
       <navigator url="/pages/my-hours/my-hours" class="card">我的年度学时 ›</navigator>
-      <button bindtap="logout">退出登录</button>
       <navigator url="/pages/password/password" class="card">修改密码 ›</navigator>
+      <button bindtap="logout">退出登录</button>
       <view class="school-footer">济南大学学生工作处</view>
     </view>
   </scroll-view>
