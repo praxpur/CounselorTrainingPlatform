@@ -1,0 +1,22 @@
+[Unit]
+Description=Consistent SQLite and private proof backup
+After=counselor.service
+
+[Service]
+Type=oneshot
+User=counselor
+Group=counselor
+WorkingDirectory=/opt/counselor/current/server
+EnvironmentFile=/etc/counselor/training.env
+ExecStartPre=/usr/bin/node /opt/counselor/current/deploy/check-runtime.js
+ExecStart=/usr/bin/node /opt/counselor/current/server/maintenance.js backup
+TimeoutStartSec=6h
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+# 在线 WAL 只读连接可能需要 SQLite 的共享内存锁目录；不开第二个 API 服务实例。
+ReadWritePaths=/var/lib/counselor /var/backups/counselor
+StandardOutput=journal
+StandardError=journal

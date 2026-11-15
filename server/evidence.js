@@ -47,10 +47,14 @@ function createEvidence(db) {
     CREATE INDEX IF NOT EXISTS external_status ON external_trainings(status,created_at);
     CREATE TABLE IF NOT EXISTS proof_files(id TEXT PRIMARY KEY,user_id TEXT NOT NULL REFERENCES users(id),
     name TEXT NOT NULL,mime_type TEXT NOT NULL,bytes INTEGER NOT NULL,created_at INTEGER NOT NULL,
-    external_id INTEGER REFERENCES external_trainings(id),experience_id INTEGER REFERENCES experiences(id));
+    external_id INTEGER REFERENCES external_trainings(id),experience_id INTEGER REFERENCES experiences(id),
+    ever_submitted INTEGER NOT NULL DEFAULT 0);
     CREATE INDEX IF NOT EXISTS proof_owner ON proof_files(user_id);
     CREATE INDEX IF NOT EXISTS proof_external ON proof_files(external_id);
-    CREATE INDEX IF NOT EXISTS proof_experience ON proof_files(experience_id);`)
+    CREATE INDEX IF NOT EXISTS proof_experience ON proof_files(experience_id);
+    CREATE TABLE IF NOT EXISTS evidence_migrations(name TEXT PRIMARY KEY,applied_at INTEGER NOT NULL);`)
+  if(!db.prepare('PRAGMA table_info(proof_files)').all().some(column=>column.name==='ever_submitted'))
+    db.exec('ALTER TABLE proof_files ADD COLUMN ever_submitted INTEGER NOT NULL DEFAULT 0')
   const root = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, 'uploads'))
   let uploads = 0, downloads = 0
   function validateProofs(ids, user, externalId = null, required = true, activityId = null) {
@@ -90,6 +94,17 @@ function createEvidence(db) {
     return db.prepare("SELECT a.id FROM activities a JOIN registrations r ON r.activity_id=a.id WHERE r.user_id=? AND r.cancelled_at IS NULL AND a.title=? AND a.status='published' AND a.starts_at>=? AND a.starts_at<?").get(userId, title, start, start + 86400000)
   }
   return {
+    preserveExistingProofs() {
+      if(db.prepare("SELECT name FROM evidence_migrations WHERE name='submitted-proof-retention-v1'").get())return
+      // 旧库无法仅凭当前关联证明文件从未提交；首次升级保守保留所有已有材料。
+      // 在注册审计函数之后执行，避免有旧审计触发器的库出现初始化空窗。
+      db.exec('BEGIN IMMEDIATE')
+      try{
+        db.prepare('UPDATE proof_files SET ever_submitted=1 WHERE ever_submitted=0').run()
+        db.prepare('INSERT INTO evidence_migrations VALUES(?,?)').run('submitted-proof-retention-v1',Date.now())
+        db.exec('COMMIT')
+      }catch(error){db.exec('ROLLBACK');throw error}
+    },
     combinedReviews(url) {
       const status = url.searchParams.get('status')
       if (status && !['pending','approved','rejected'].includes(status)) fail(400,'审核状态无效')
@@ -178,11 +193,11 @@ function createEvidence(db) {
         if (duplicate) fail(409, '该活动已经提交，请勿重复申请学时')
         if (id) {
           db.prepare("UPDATE external_trainings SET title=?,organizer=?,occurred_on=?,requested_hours=?,description=?,status='pending',credited_hours=0,reviewed_by=NULL,reviewed_at=NULL,review_note='' WHERE id=?").run(form.title, form.organizer, form.occurredOn, form.requestedHours, form.description, id)
-          db.prepare('UPDATE proof_files SET external_id=NULL WHERE external_id=?').run(id)
+          db.prepare('UPDATE proof_files SET external_id=NULL,ever_submitted=1 WHERE external_id=?').run(id)
         } else {
           id = Number(db.prepare('INSERT INTO external_trainings(user_id,title,organizer,occurred_on,requested_hours,description,created_at) VALUES(?,?,?,?,?,?,?)').run(user.id, form.title, form.organizer, form.occurredOn, form.requestedHours, form.description, Date.now()).lastInsertRowid)
         }
-        for (const proofId of input.proofIds) db.prepare('UPDATE proof_files SET external_id=? WHERE id=?').run(id, proofId)
+        for (const proofId of input.proofIds) db.prepare('UPDATE proof_files SET external_id=?,ever_submitted=1 WHERE id=?').run(id, proofId)
         db.exec('COMMIT')
         return { id, status: 'pending' }
       } catch (error) { db.exec('ROLLBACK'); throw error }
@@ -194,7 +209,7 @@ function createEvidence(db) {
         const date = new Date(event.starts_at + 8 * 3600000).toISOString().slice(0,10)
         const result = db.prepare('INSERT INTO experiences(user_id,activity_id,title,organizer,occurred_on,description,created_at) VALUES(?,?,?,?,?,?,?)').run(user.id, event.id, event.title, '平台活动', date, description, Date.now())
         const id = Number(result.lastInsertRowid)
-        for (const proofId of proofIds) db.prepare('UPDATE proof_files SET experience_id=? WHERE id=?').run(id, proofId)
+        for (const proofId of proofIds) db.prepare('UPDATE proof_files SET experience_id=?,ever_submitted=1 WHERE id=?').run(id, proofId)
         db.exec('COMMIT')
         return { id, status: 'pending' }
       } catch (error) { db.exec('ROLLBACK'); throw error }

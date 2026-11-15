@@ -99,6 +99,7 @@ const attendance = createAttendance(db)
 const evidence = createEvidence(db)
 const notifications = createNotifications(db)
 const audit = createAudit(db)
+evidence.preserveExistingProofs()
 const registration = createRegistration(db)
 function body(req) {
   return new Promise((resolve, reject) => {

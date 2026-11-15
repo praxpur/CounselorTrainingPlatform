@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily counselor training backup
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=10m
+Unit=counselor-backup.service
+
+[Install]
+WantedBy=timers.target

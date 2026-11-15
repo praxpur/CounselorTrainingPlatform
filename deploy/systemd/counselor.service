@@ -1,0 +1,32 @@
+[Unit]
+Description=Counselor training API (single Node process)
+After=network.target
+
+[Service]
+Type=simple
+User=counselor
+Group=counselor
+WorkingDirectory=/opt/counselor/current/server
+EnvironmentFile=/etc/counselor/training.env
+ExecStartPre=/usr/bin/node /opt/counselor/current/deploy/check-runtime.js
+ExecStart=/usr/bin/node /opt/counselor/current/server/server.js
+Restart=on-failure
+RestartSec=3
+KillSignal=SIGTERM
+TimeoutStopSec=30
+UMask=0077
+StateDirectory=counselor
+StateDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/counselor
+LimitNOFILE=8192
+MemoryAccounting=true
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=counselor-api
+
+[Install]
+WantedBy=multi-user.target

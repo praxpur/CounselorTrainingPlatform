@@ -148,6 +148,38 @@ test('平台活动和自行培训之间阻止同人同日同名活动重复计�
   assert.equal((await call('/api/my/external-trainings', 'POST', { ...form, title: '已报名平台活动', proofIds: [file.id] })).status, 409)
 })
 
+test('重提移除旧附件仍保留曾提交标记，新上传未使用材料才可进入清理候选',async()=>{
+  const oldFile=(await upload()).body
+  assert.equal(db.prepare('SELECT ever_submitted FROM proof_files WHERE id=?').get(oldFile.id).ever_submitted,0)
+  const body={...form,title:'材料更换',proofIds:[oldFile.id]}
+  const created=await call('/api/my/external-trainings','POST',body)
+  const id=created.body.id
+  await call('/api/admin/external-trainings/'+id+'/review','POST',{status:'rejected',note:'更换证明'},admin)
+  const next=(await upload()).body
+  assert.equal((await call('/api/my/external-trainings/'+id,'PUT',{...body,proofIds:[next.id]})).status,200)
+  const previous=db.prepare('SELECT external_id,ever_submitted FROM proof_files WHERE id=?').get(oldFile.id)
+  assert.equal(previous.external_id,null);assert.equal(previous.ever_submitted,1)
+  assert.ok(fs.existsSync(path.join(uploadRoot,oldFile.id)))
+  assert.equal(db.prepare('SELECT ever_submitted FROM proof_files WHERE id=?').get(next.id).ever_submitted,1)
+})
+
+test('旧材料升级保守保留且可重入，后续未使用的新材料仍可清理',()=>{
+  const legacy=new(require('node:sqlite').DatabaseSync)(':memory:')
+  try{
+    legacy.exec(`CREATE TABLE users(id TEXT PRIMARY KEY);CREATE TABLE experiences(id INTEGER PRIMARY KEY);
+      CREATE TABLE proof_files(id TEXT PRIMARY KEY,user_id TEXT,name TEXT,mime_type TEXT,bytes INTEGER,created_at INTEGER,external_id INTEGER,experience_id INTEGER);
+      INSERT INTO users VALUES('owner');`)
+    const oldId='a'.repeat(48),newId='b'.repeat(48)
+    legacy.prepare("INSERT INTO proof_files VALUES(?,'owner','旧材料','application/pdf',10,1,NULL,NULL)").run(oldId)
+    const evidence=require('./evidence').createEvidence(legacy)
+    evidence.preserveExistingProofs()
+    assert.equal(legacy.prepare('SELECT ever_submitted FROM proof_files WHERE id=?').get(oldId).ever_submitted,1)
+    legacy.prepare("INSERT INTO proof_files(id,user_id,name,mime_type,bytes,created_at) VALUES(?,'owner','新材料','application/pdf',10,1)").run(newId)
+    evidence.preserveExistingProofs()
+    assert.equal(legacy.prepare('SELECT ever_submitted FROM proof_files WHERE id=?').get(newId).ever_submitted,0)
+  }finally{legacy.close()}
+})
+
 test('材料有个人配额，上传中停用账号不留文件或数据库记录', async () => {
   const insert = db.prepare('INSERT INTO proof_files(id,user_id,name,mime_type,bytes,created_at) VALUES(?,?,?,?,?,?)')
   for (let index = 0; index < 100; index++) insert.run(require('node:crypto').randomBytes(24).toString('hex'), 'u1', 'quota-fixture', 'application/pdf', 1, Date.now())

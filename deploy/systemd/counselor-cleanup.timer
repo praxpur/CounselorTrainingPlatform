@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily expired session and orphan proof cleanup
+
+[Timer]
+OnCalendar=*-*-* 04:30:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=10m
+Unit=counselor-cleanup.service
+
+[Install]
+WantedBy=timers.target

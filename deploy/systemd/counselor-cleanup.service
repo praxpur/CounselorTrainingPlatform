@@ -1,0 +1,21 @@
+[Unit]
+Description=Expire sessions and remove unused old proofs
+After=counselor.service
+
+[Service]
+Type=oneshot
+User=counselor
+Group=counselor
+WorkingDirectory=/opt/counselor/current/server
+EnvironmentFile=/etc/counselor/training.env
+ExecStartPre=/usr/bin/node /opt/counselor/current/deploy/check-runtime.js
+ExecStart=/usr/bin/node /opt/counselor/current/server/maintenance.js cleanup
+TimeoutStartSec=2h
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/counselor
+StandardOutput=journal
+StandardError=journal

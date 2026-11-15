@@ -22,7 +22,7 @@ function createAudit(db) {
     ['external_trainings', ['user_id','title','organizer','occurred_on','requested_hours','description','status','credited_hours','reviewed_by','reviewed_at','review_note'], row => row + '.id'],
     ['credentials', ['user_id','must_change'], row => row + '.user_id'],
     ['sessions', ['user_id','expires'], row => row + '.user_id'],
-    ['proof_files', ['user_id','name','mime_type','bytes','external_id','experience_id'], row => row + '.id'],
+    ['proof_files', ['user_id','name','mime_type','bytes','external_id','experience_id','ever_submitted'], row => row + '.id'],
     ['attendance_sessions', ['activity_id','phase','method','opens_at','closes_at','latitude','longitude','radius','created_by'], row => row + ".activity_id || ':' || " + row + '.phase'],
     ['attendance_records', ['activity_id','user_id','phase','method','recorded_at','distance','accuracy'], row => row + ".activity_id || ':' || " + row + ".user_id || ':' || " + row + '.phase'],
     ['notification_events',['kind','target','created_at'],row=>row+'.id'],
