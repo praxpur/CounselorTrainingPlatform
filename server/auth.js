@@ -34,7 +34,9 @@ function createAuthentication(db) {
     user_id TEXT PRIMARY KEY REFERENCES users(id), password_hash TEXT NOT NULL,
     must_change INTEGER NOT NULL DEFAULT 1);
     CREATE TABLE IF NOT EXISTS auth_limits(key TEXT PRIMARY KEY, hits INTEGER NOT NULL, reset_at INTEGER NOT NULL);
-    CREATE INDEX IF NOT EXISTS auth_limit_expiry ON auth_limits(reset_at);`)
+    CREATE INDEX IF NOT EXISTS auth_limit_expiry ON auth_limits(reset_at);
+    CREATE TABLE IF NOT EXISTS verified_sessions(
+      token_hash TEXT PRIMARY KEY REFERENCES sessions(token_hash) ON DELETE CASCADE);`)
   function limit(kind, value, max) {
     const key = hashToken(kind + ':' + value), now = Date.now()
     db.prepare('DELETE FROM auth_limits WHERE reset_at<=?').run(now)
@@ -51,6 +53,7 @@ function createAuthentication(db) {
     const token = crypto.randomBytes(32).toString('hex'), now = Date.now()
     db.prepare('DELETE FROM sessions WHERE expires<=?').run(now)
     db.prepare('INSERT INTO sessions VALUES(?,?,?)').run(hashToken(token), id, now + 8 * 3600000)
+    db.prepare('INSERT INTO verified_sessions(token_hash) VALUES(?)').run(hashToken(token))
     const user = db.prepare('SELECT id,name,department,role FROM users WHERE id=?').get(id)
     return { token, user, mustChangePassword: Boolean(credential(id).must_change) }
   }
@@ -64,11 +67,20 @@ function createAuthentication(db) {
         fail(401, '工号或密码错误，或账号已停用')
       const stored = credential(id)
       const valid = await verifyPassword(input.password, stored?.password_hash)
-      // 哈希期间可能发生停用、重置密码，必须复核最新状态。
-      const current = credential(id)
-      if (!valid || !stored?.enabled || !current?.enabled || current.password_hash !== stored.password_hash)
-        fail(401, '工号或密码错误，或账号已停用')
-      return issue(id)
+      if (!valid || !stored?.enabled) fail(401, '工号或密码错误，或账号已停用')
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        // 等待写锁时另一进程也可能停用账号或重置密码，必须在锁内复核。
+        const current = credential(id)
+        if (!current?.enabled || current.password_hash !== stored.password_hash)
+          fail(401, '工号或密码错误，或账号已停用')
+        const result = issue(id)
+        db.exec('COMMIT')
+        return result
+      } catch (error) {
+        db.exec('ROLLBACK')
+        throw error
+      }
     },
     async changePassword(user, input, ip, revalidate) {
       limit('password-ip', ip, 3000)
@@ -78,12 +90,12 @@ function createAuthentication(db) {
         fail(403, '原密码错误')
       if (input.oldPassword === input.newPassword) fail(400, '新密码不能与原密码相同')
       const encoded = await encodePassword(input.newPassword)
-      revalidate()
-      const current = credential(user.id)
-      if (!current?.enabled || current.password_hash !== stored.password_hash)
-        fail(401, '账号状态已改变，请重新登录')
       db.exec('BEGIN IMMEDIATE')
       try {
+        revalidate()
+        const current = credential(user.id)
+        if (!current?.enabled || current.password_hash !== stored.password_hash)
+          fail(401, '账号状态已改变，请重新登录')
         db.prepare('UPDATE credentials SET password_hash=?,must_change=0 WHERE user_id=?').run(encoded, user.id)
         db.prepare('DELETE FROM sessions WHERE user_id=?').run(user.id)
         const result = issue(user.id)

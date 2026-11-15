@@ -121,7 +121,7 @@ function createEvidence(db) {
       if (!query.searchParams.has('limit')) query.searchParams.set('limit','50')
       const result = pageQuery(db,sql,status ? [status] : [],query)
       const mapped = mapPage(result,row=>({ ...row,external:Boolean(row.external),proofs:proofList(db,row.external?'external_id':'experience_id',row.reviewId) }))
-      const pendingCount = db.prepare("SELECT (SELECT COUNT(*) FROM experiences WHERE status='pending')+(SELECT COUNT(*) FROM external_trainings WHERE status='pending') n").get().n
+      const pendingCount = db.prepare("SELECT (SELECT COUNT(*) FROM experiences WHERE activity_id IS NOT NULL AND status='pending')+(SELECT COUNT(*) FROM external_trainings WHERE status='pending') n").get().n
       return { ...mapped,pendingCount }
     },
     preventDuplicateCredit(event, userId) {

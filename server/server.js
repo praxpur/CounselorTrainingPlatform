@@ -144,9 +144,12 @@ function requireUser(req) {
   const user =
     token &&
     get(
-      'SELECT u.id,u.name,u.department,u.role,u.enabled FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires>? AND u.enabled=1',
+      `SELECT u.id,u.name,u.department,u.role,u.enabled FROM sessions s JOIN users u ON u.id=s.user_id
+       WHERE s.token_hash=? AND s.expires>? AND u.enabled=1 AND (?=0 OR EXISTS(
+         SELECT 1 FROM verified_sessions v JOIN credentials c ON c.user_id=u.id WHERE v.token_hash=s.token_hash))`,
       hash(token[1]),
       Date.now(),
+      process.env.NODE_ENV === 'production' ? 1 : 0,
     )
   if (!user) fail(401, '请登录')
   req.authenticatedUser = user.id
@@ -707,7 +710,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       return send(
         res,
         200,
-        get("SELECT (SELECT COUNT(*) FROM experiences WHERE status='pending') + (SELECT COUNT(*) FROM external_trainings WHERE status='pending') pendingCount"),
+        get("SELECT (SELECT COUNT(*) FROM experiences WHERE activity_id IS NOT NULL AND status='pending') + (SELECT COUNT(*) FROM external_trainings WHERE status='pending') pendingCount"),
       )
     }
     if (path === '/api/admin/exports/ranking' && method === 'GET') {
