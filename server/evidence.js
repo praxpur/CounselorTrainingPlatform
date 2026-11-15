@@ -1,3 +1,4 @@
+const { pageQuery, mapPage } = require('./pagination')
 const fs = require('node:fs/promises')
 const path = require('node:path')
 const crypto = require('node:crypto')
@@ -8,18 +9,6 @@ function proofList(db, field, id) {
   if (!id) return []
   if (!['experience_id', 'external_id'].includes(field)) throw new Error('Invalid proof target')
   return db.prepare('SELECT id,name,mime_type mimeType,bytes size FROM proof_files WHERE ' + field + '=? ORDER BY created_at,id').all(id)
-}
-function externalRecords(db, userId) {
-  return db.prepare('SELECT * FROM external_trainings WHERE user_id=? ORDER BY occurred_on DESC,id DESC').all(userId).map(record => ({
-    id: 'external:' + record.id, externalId: record.id, external: true, title: record.title,
-    location: record.organizer, startsAt: Date.parse(record.occurred_on + 'T00:00:00+08:00'),
-    status: 'published', reviewStatus: record.status, experienceStatus: record.status,
-    reviewLabel: { pending: '待审核', approved: '已审核通过', rejected: '已驳回' }[record.status],
-    experienceId: null, experience: record.description, reviewNote: record.review_note,
-    creditHours: record.requested_hours, recognizedHours: record.status === 'approved' ? record.credited_hours : 0,
-    confirmedAt: record.status === 'approved' ? record.reviewed_at : null,
-    canSubmit: record.status === 'rejected', proofs: proofList(db, 'external_id', record.id),
-  }))
 }
 function collectFile(req) {
   return new Promise((resolve, reject) => {
@@ -63,7 +52,7 @@ function createEvidence(db) {
     CREATE INDEX IF NOT EXISTS proof_external ON proof_files(external_id);
     CREATE INDEX IF NOT EXISTS proof_experience ON proof_files(experience_id);`)
   const root = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, 'uploads'))
-  let uploads = 0
+  let uploads = 0, downloads = 0
   function validateProofs(ids, user, externalId = null, required = true, activityId = null) {
     if (!Array.isArray(ids) || ids.length > 5 || (required && ids.length === 0) || new Set(ids).size !== ids.length)
       fail(400, '请上传 1—5 份证明材料')
@@ -101,6 +90,25 @@ function createEvidence(db) {
     return db.prepare("SELECT a.id FROM activities a JOIN registrations r ON r.activity_id=a.id WHERE r.user_id=? AND a.title=? AND a.status='published' AND a.starts_at>=? AND a.starts_at<?").get(userId, title, start, start + 86400000)
   }
   return {
+    combinedReviews(url) {
+      const status = url.searchParams.get('status')
+      if (status && !['pending','approved','rejected'].includes(status)) fail(400,'审核状态无效')
+      const sql = `SELECT * FROM (
+        SELECT 'experience:'||e.id id,e.id reviewId,0 external,e.title,e.description,e.status,e.credit_hours creditHours,e.review_note reviewNote,
+          u.id userId,u.name,u.department,NULL organizer,NULL occurredOn,NULL requestedHours,e.created_at createdAt
+        FROM experiences e JOIN users u ON e.user_id=u.id WHERE e.activity_id IS NOT NULL
+        UNION ALL
+        SELECT 'external:'||e.id,e.id,1,e.title,e.description,e.status,e.credited_hours,e.review_note,
+          u.id,u.name,u.department,e.organizer,e.occurred_on,e.requested_hours,e.created_at
+        FROM external_trainings e JOIN users u ON e.user_id=u.id
+      )` + (status ? ' WHERE status=?' : '') + " ORDER BY CASE WHEN status='pending' THEN 0 ELSE 1 END,createdAt DESC,id DESC"
+      const query = new URL(url)
+      if (!query.searchParams.has('limit')) query.searchParams.set('limit','50')
+      const result = pageQuery(db,sql,status ? [status] : [],query)
+      const mapped = mapPage(result,row=>({ ...row,external:Boolean(row.external),proofs:proofList(db,row.external?'external_id':'experience_id',row.reviewId) }))
+      const pendingCount = db.prepare("SELECT (SELECT COUNT(*) FROM experiences WHERE status='pending')+(SELECT COUNT(*) FROM external_trainings WHERE status='pending') n").get().n
+      return { ...mapped,pendingCount }
+    },
     preventDuplicateCredit(event, userId) {
       const date = new Date(event.starts_at + 8 * 3600000).toISOString().slice(0,10)
       if (db.prepare("SELECT id FROM external_trainings WHERE user_id=? AND title=? AND occurred_on=? AND status='approved'").get(userId, event.title, date))
@@ -136,11 +144,21 @@ function createEvidence(db) {
       if (!/^[a-f0-9]{48}$/.test(id)) fail(404, '材料不存在')
       const file = db.prepare('SELECT * FROM proof_files WHERE id=?').get(id)
       if (!file || (user.role !== 'admin' && file.user_id !== user.id)) fail(404, '材料不存在')
-      let buffer
-      try { buffer = await fs.readFile(path.join(root, id)) } catch { fail(404, '材料文件不存在，请联系管理员') }
-      const current = authorize()
-      if (current.role !== 'admin' && current.id !== file.user_id) fail(404, '材料不存在')
-      return { buffer, name: file.name, mimeType: file.mime_type }
+      if(downloads>=4)fail(429,'材料下载繁忙，请稍后重试')
+      downloads++
+      try {
+        let buffer
+        try {
+          const filePath=path.join(root,id),state=await fs.stat(filePath)
+          if(!state.isFile()||state.size>MAX_FILE)fail(413,'材料文件异常，请联系管理员')
+          buffer=await fs.readFile(filePath)
+        } catch(error) { if(error.status)throw error;fail(404,'材料文件不存在，请联系管理员') }
+        const current=authorize()
+        if(current.role!=='admin'&&current.id!==file.user_id)fail(404,'材料不存在')
+        let released=false
+        const release=()=>{if(!released){released=true;downloads--}}
+        return {buffer,name:file.name,mimeType:file.mime_type,release}
+      } catch(error) { downloads--;throw error }
     },
     getExternal(id, user) {
       const record = ownExternal(id, user)
@@ -181,8 +199,11 @@ function createEvidence(db) {
         return { id, status: 'pending' }
       } catch (error) { db.exec('ROLLBACK'); throw error }
     },
-    adminList() {
-      return db.prepare('SELECT e.id,e.title,e.organizer,e.occurred_on occurredOn,e.requested_hours requestedHours,e.description,e.status,e.credited_hours creditHours,e.review_note reviewNote,u.id userId,u.name,u.department FROM external_trainings e JOIN users u ON e.user_id=u.id ORDER BY e.created_at DESC,e.id DESC').all().map(record => ({ ...record, proofs: proofList(db, 'external_id', record.id) }))
+    adminList(url) {
+      const status = url?.searchParams.get('status')
+      if (status && !['pending','approved','rejected'].includes(status)) fail(400,'审核状态无效')
+      const result = pageQuery(db,'SELECT e.id,e.title,e.organizer,e.occurred_on occurredOn,e.requested_hours requestedHours,e.description,e.status,e.credited_hours creditHours,e.review_note reviewNote,u.id userId,u.name,u.department FROM external_trainings e JOIN users u ON e.user_id=u.id' + (status ? ' WHERE e.status=?' : '') + ' ORDER BY e.created_at DESC,e.id DESC',status ? [status] : [],url)
+      return mapPage(result,record => ({ ...record,proofs:proofList(db,'external_id',record.id) }))
     },
     review(id, input, actor) {
       const status = input.status, note = typeof input.note === 'string' ? input.note.trim() : ''
@@ -197,4 +218,4 @@ function createEvidence(db) {
     },
   }
 }
-module.exports = { createEvidence, externalRecords, proofList }
+module.exports = { createEvidence, proofList }

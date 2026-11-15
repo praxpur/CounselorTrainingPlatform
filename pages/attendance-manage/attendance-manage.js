@@ -1,4 +1,5 @@
 const api = require('../../utils/store')
+const { loadList } = require('../../utils/pagination')
 const methods = ['qr', 'location', 'both']
 Page({
   data: { loading: false, busy: false, errorMessage: '', sessions: [], records: [],
@@ -6,18 +7,13 @@ Page({
     duration: '15', radius: '100', latitude: null, longitude: null, placeName: '', qrImage: '', qrExpires: '' },
   onLoad(options) { this.id = options.id },
   onShow() { this.load() },
-  async load() {
-    if (!api.guard()) return
-    this.setData({ loading: true, errorMessage: '' })
-    try {
-      const report = await api.request('/api/admin/activities/' + this.id + '/attendance')
-      this.setData({
-        sessions: report.sessions.map(session => ({ ...session, phaseLabel: session.phase === 'in' ? '签到' : '签退', closesText: api.time(session.closesAt) })),
-        records: report.records.map(record => ({ ...record, phaseLabel: record.phase === 'in' ? '签到' : '签退', timeText: api.time(record.recordedAt) })),
-      })
-    } catch (error) { this.setData({ errorMessage: error.message }); api.error(error) }
-    finally { this.setData({ loading: false }) }
+  load(append = false) {
+    return loadList(this,api,{path:'/api/admin/activities/'+this.id+'/attendance',field:'records',rowsKey:'records',append,
+      map:record=>({...record,phaseLabel:record.phase==='in'?'签到':'签退',timeText:api.time(record.recordedAt)}),
+      after:report=>({sessions:report.sessions.map(session=>({...session,phaseLabel:session.phase==='in'?'签到':'签退',closesText:api.time(session.closesAt)}))})})
   },
+  previous(){return this.load({pageOffset:this.data.previousOffset})},
+  more(){return this.load(true)},
   input(event) { this.setData({ [event.currentTarget.dataset.field]: event.detail.value }) },
   chooseLocation() {
     wx.chooseLocation({

@@ -4,6 +4,82 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 
+test('活动分页追加不重复，切换年份后旧响应不能覆盖新列表', async () => {
+  const pending=[]
+  const {page:list}=page('pages/course/list.js',{
+    guard:()=>true,error(){},format:value=>value,
+    request:url=>new Promise((resolve,reject)=>pending.push({url,resolve,reject})),
+  })
+  const old=list.load()
+  list.changeYear({detail:{value:'26'}})
+  pending[1].resolve({rows:[{id:1},{id:2}],total:3,hasMore:true,nextOffset:2})
+  await new Promise(setImmediate)
+  pending[0].resolve({rows:[{id:99}],total:1,hasMore:false})
+  await old
+  assert.equal(list.data.activities[0].id,1)
+  const next=list.more()
+  await list.more()
+  assert.equal(pending.length,3)
+  assert.match(pending[2].url,/offset=2/)
+  pending[2].reject(new Error('临时断网'))
+  await next
+  assert.equal(list.data.activities.length,2)
+  const retry=list.more()
+  pending[3].resolve({rows:[{id:3}],total:3,hasMore:false,nextOffset:null})
+  await retry
+  assert.equal(list.data.activities.length,3)
+  assert.equal(new Set(list.data.activities.map(value=>value.id)).size,3)
+})
+
+test('返回人员列表后旧的明细请求不能恢复已关闭的详情', async () => {
+  let resolveRecords
+  const {page:people}=page('pages/stastic/people/people.js',{
+    guard:()=>true,error(){},time:()=>'',
+    request:url=>url.includes('person-records')?new Promise(resolve=>{resolveRecords=resolve}):Promise.resolve({rows:[{id:'u1',name:'老师',department:'学院'}],total:1,hasMore:false}),
+  })
+  await people.load()
+  const task=people.select({currentTarget:{dataset:{id:'u1'}}})
+  people.back()
+  resolveRecords({rows:[{id:1}],total:1,hasMore:false})
+  await task
+  assert.equal(people.data.selected,null)
+  assert.equal(people.data.records.length,0)
+})
+
+test('年度明细加载更多保持完整年度汇总，不能按已加载页重算学时', async () => {
+  let calls=0
+  const {page:annual}=page('pages/my-hours/my-hours.js',{
+    guard:()=>true,error(){},time:()=>'',
+    request:async()=>({year:2025,total:132,activityCount:132,totalHours:130.55,months:[{month:1,hours:130.55}],
+      records:[{id:++calls}],hasMore:calls===1,nextOffset:calls===1?1:null}),
+  })
+  await annual.load();await annual.more()
+  assert.equal(annual.data.records.length,2)
+  assert.equal(annual.data.report.activityCount,132)
+  assert.equal(annual.data.report.totalHours,130.55)
+})
+
+test('长经历列表限制页面保留量，切换窗口后仍可返回上一页', async () => {
+  const urls=[]
+  const {page:records}=page('pages/record/record.js',{
+    guard:()=>true,error(){},time:()=>'',
+    request:async url=>{
+      urls.push(url)
+      const offset=Number(new URL('http://local'+url).searchParams.get('offset'))
+      return {rows:Array.from({length:20},(_,i)=>({id:offset+i+1,startsAt:1,reviewStatus:'pending',experience:'长'.repeat(2000)})),total:200,hasMore:true,nextOffset:offset+20}
+    },
+  })
+  await records.load();await records.more();await records.more()
+  assert.equal(records.data.windowed,true)
+  assert.equal(records.data.records.length,20)
+  assert.equal(records.data.displayFrom,41)
+  assert.equal(records.data.previousOffset,20)
+  await records.previous()
+  assert.match(urls.at(-1),/offset=20/)
+  assert.equal(records.data.records[0].id,21)
+  assert.ok(JSON.stringify(records.data).length<300000)
+})
+
 test('审计页使用游标追加，按钮事件刷新不会误当作加载更多', async () => {
   const urls = []
   const { page: audit } = page('pages/audit/audit.js', {
@@ -43,7 +119,7 @@ test('自行培训提交后只读，管理员认定学时走独立审核接口',
     guard: () => true, error() {},
     request: async (url, method, body) => {
       if (method === 'POST') { route = url; payload = body; return {} }
-      return url === '/api/admin/experiences' ? [] : [{ id: 1, requestedHours: 1.5, status: 'pending' }]
+      return { rows:[{ id:'external:1',reviewId:1,external:true,requestedHours:1.5,status:'pending' }],total:1,hasMore:false,pendingCount:1 }
     },
   }, { showModal: options => options.success({ confirm: true }) })
   await reviews.load()
@@ -188,7 +264,7 @@ function page(file, api, overrides = {}) {
     ...overrides,
   }
   vm.runInNewContext(fs.readFileSync(path.join(__dirname, '..', file), 'utf8'), {
-    require: () => api,
+    require: specifier => specifier.endsWith('/pagination') ? require('../utils/pagination') : api,
     Page: (value) => {
       config = value
     },
@@ -197,6 +273,8 @@ function page(file, api, overrides = {}) {
     console,
     setInterval,
     clearInterval,
+    setTimeout,
+    clearTimeout,
   })
   config.data = JSON.parse(JSON.stringify(config.data || {}))
   config.setData = function (patch) {

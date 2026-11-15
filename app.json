@@ -23,7 +23,8 @@
     "pages/attendance/attendance",
     "pages/attendance-manage/attendance-manage",
     "pages/self-training/self-training",
-    "pages/audit/audit"
+    "pages/audit/audit",
+    "pages/activity-manage/activity-manage"
   ],
   "window": {
     "navigationBarTextStyle": "black",

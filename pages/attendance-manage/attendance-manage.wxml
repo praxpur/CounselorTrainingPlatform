@@ -33,6 +33,9 @@
         <view class="muted">{{item.department}} · {{item.timeText}}</view>
         <view class="muted" wx:if="{{item.distance !== null}}">距中心 {{item.distance}} 米 · 定位精度 {{item.accuracy}} 米</view>
       </view>
+      <view class="muted" wx:if="{{windowed}}">当前显示第 {{displayFrom}}—{{displayTo}} 条，可返回上一页。</view>
+      <button wx:if="{{previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{loading || busy || uploading}}">上一页</button>
+      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading || busy || uploading}}">加载更早现场记录</button>
     </view>
   </scroll-view>
 </view>

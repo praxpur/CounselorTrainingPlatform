@@ -9,7 +9,7 @@ function actionLabel(action) {
     ({ 'auth.login': '账号登录', 'auth.password.change': '修改密码', 'data.export': '数据导出', 'audit.read': '查看审计日志', 'proof.download': '材料下载', 'request.write': '接口操作', 'request.denied': '拒绝访问' }[action] || action)
 }
 Page({
-  data: { loading: false, errorMessage: '', rows: [], actor: '', actionIndex: 0,
+  data: { loading: false, errorMessage: '', rows: [], loadedCount:0, windowed:false, actor: '', actionIndex: 0,
     actionLabels: ['全部操作','账号登录','人员修改','活动修改','培训经历审核','自行培训审核','数据导出'], nextCursor: null, hasMore: false },
   onShow() { this.load() },
   input(event) { this.setData({ actor: event.detail.value }) },
@@ -22,12 +22,14 @@ Page({
     if (append && this.data.loading) return
     const requestId = (this.requestId || 0) + 1; this.requestId = requestId
     const cursor = append ? this.data.nextCursor : null
-    this.setData({ loading: true, errorMessage: '', ...(append ? {} : { rows: [], hasMore: false, nextCursor: null }) })
+    this.setData({ loading: true, errorMessage: '', ...(append ? {} : { rows: [], hasMore: false, nextCursor: null,loadedCount:0,windowed:false }) })
     try {
-      const result = await api.request('/api/admin/audit-logs?limit=50&actor=' + encodeURIComponent(this.data.actor.trim()) + '&action=' + encodeURIComponent(actions[this.data.actionIndex] || '') + (cursor ? '&before=' + cursor : ''))
+      const result = await api.request('/api/admin/audit-logs?limit=20&actor=' + encodeURIComponent(this.data.actor.trim()) + '&action=' + encodeURIComponent(actions[this.data.actionIndex] || '') + (cursor ? '&before=' + cursor : ''))
       if (requestId !== this.requestId) return
-      const rows = result.rows.map(row => ({ ...row, timeText: api.time(row.happenedAt), label: actionLabel(row.action), detailText: JSON.stringify(row.detail, null, 2) }))
-      this.setData({ rows: append ? [...this.data.rows, ...rows] : rows, nextCursor: result.nextCursor, hasMore: result.hasMore })
+      const rows = result.rows.map(row => { const {detail,...metadata}=row;return {...metadata,timeText:api.time(row.happenedAt),label:actionLabel(row.action),detailText:JSON.stringify(detail,null,2)} })
+      const combined=append?[...this.data.rows,...rows]:rows
+      const windowed=combined.length>100||JSON.stringify(combined).length>100000
+      this.setData({ rows:windowed?rows:combined,windowed:windowed||(append&&this.data.windowed),loadedCount:append?this.data.loadedCount+rows.length:rows.length,nextCursor: result.nextCursor, hasMore: result.hasMore })
     } catch (error) { if (requestId === this.requestId) { this.setData({ errorMessage: error.message }); api.error(error) } }
     finally { if (requestId === this.requestId) this.setData({ loading: false }) }
   },

@@ -1,4 +1,5 @@
 const api = require('../../utils/store')
+const { loadList } = require('../../utils/pagination')
 const empty = () => ({ id: '', name: '', department: '', initialPassword: '' })
 Page({
   data: {
@@ -30,20 +31,9 @@ Page({
   searchInput(e) {
     this.setData({ query: e.detail.value })
   },
-  async load() {
-    if (!api.guard()) return
-    this.setData({ loading: true, errorMessage: '' })
-    try {
-      this.setData({
-        users: await api.request('/api/admin/users?q=' + encodeURIComponent(this.data.query)),
-      })
-    } catch (e) {
-      this.setData({ errorMessage: e.message })
-      api.error(e)
-    } finally {
-      this.setData({ loading: false })
-    }
-  },
+  load(append = false) { return loadList(this,api,{ path:'/api/admin/users?q='+encodeURIComponent(this.data.query),field:'users',append }) },
+  previous(){return this.load({pageOffset:this.data.previousOffset})},
+  more() { return this.load(true) },
   edit(e) {
     const u = this.data.users.find((x) => x.id === e.currentTarget.dataset.id)
     if (u)

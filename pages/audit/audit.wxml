@@ -13,6 +13,7 @@
         <text class="audit-detail" selectable>{{item.detailText}}</text>
         <view class="muted">请求编号：{{item.requestId}}</view>
       </view>
+      <view class="muted" wx:if="{{windowed}}">已读取 {{loadedCount}} 条，目前显示 {{rows.length}} 条。查询 / 刷新可返回最新记录。</view>
       <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading}}">加载更早记录</button>
       <view class="muted" wx:if="{{!loading && !errorMessage && !rows.length}}">暂无对应记录</view>
     </view>

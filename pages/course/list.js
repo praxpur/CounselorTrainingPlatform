@@ -1,4 +1,5 @@
 const api = require('../../utils/store')
+const { loadList } = require('../../utils/pagination')
 const currentYear = new Date(Date.now() + 8 * 3600000).getUTCFullYear()
 const years = Array.from({ length: 101 }, (_, index) => 2000 + index)
 Page({
@@ -18,24 +19,12 @@ Page({
     this.setData({ yearIndex, year: yearIndex === 0 ? null : years[yearIndex - 1], activities: [] })
     this.load()
   },
-  async load() {
-    if (!api.guard()) return
-    const requestId = (this.requestId || 0) + 1
-    this.requestId = requestId
-    this.setData({ loading: true, errorMessage: '' })
-    try {
-      const path = '/api/activities' + (this.data.year === null ? '' : '?year=' + this.data.year)
-      const activities = await api.request(path)
-      if (this.requestId === requestId) this.setData({ activities: activities.map(api.format) })
-    } catch (e) {
-      if (this.requestId === requestId) {
-        this.setData({ errorMessage: e.message })
-        api.error(e)
-      }
-    } finally {
-      if (this.requestId === requestId) this.setData({ loading: false })
-    }
+  load(append = false) {
+    const path = '/api/activities' + (this.data.year === null ? '' : '?year=' + this.data.year)
+    return loadList(this,api,{ path,field:'activities',map:api.format,append })
   },
+  previous(){return this.load({pageOffset:this.data.previousOffset})},
+  more() { return this.load(true) },
   open(e) {
     wx.navigateTo({ url: '/pages/course/detail?id=' + e.currentTarget.dataset.id })
   },

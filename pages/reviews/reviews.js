@@ -1,4 +1,5 @@
 const api = require('../../utils/store')
+const { loadList } = require('../../utils/pagination')
 Page({
   data: {
     loading: false,
@@ -14,37 +15,13 @@ Page({
   onShow() {
     this.load()
   },
-  async load() {
-    if (!api.guard()) return
-    this.setData({ loading: true, errorMessage: '', records: [], allRecords: [] })
-    try {
-      const [platform, external] = await Promise.all([
-        api.request('/api/admin/experiences'), api.request('/api/admin/external-trainings'),
-      ])
-      const records = [...platform, ...external.map(record => ({ ...record, reviewId: record.id, id: 'external:' + record.id, external: true }))]
-      this.setData({
-        allRecords: records,
-        pendingCount: records.filter((record) => record.status === 'pending').length,
-        records: this.data.showAll
-          ? records
-          : records.filter((record) => record.status === 'pending'),
-      })
-    } catch (e) {
-      this.setData({ errorMessage: e.message })
-      api.error(e)
-    } finally {
-      this.setData({ loading: false })
-    }
+  load(append = false) {
+    return loadList(this,api,{ path:'/api/admin/reviews'+(this.data.showAll?'':'?status=pending'),field:'records',append,
+      after:(report,rows)=>({ allRecords:rows,pendingCount:report.pendingCount ?? rows.filter(record=>record.status==='pending').length }) })
   },
-  toggleRecords() {
-    const showAll = !this.data.showAll
-    this.setData({
-      showAll,
-      records: showAll
-        ? this.data.allRecords
-        : this.data.allRecords.filter((record) => record.status === 'pending'),
-    })
-  },
+  previous(){return this.load({pageOffset:this.data.previousOffset})},
+  more() { return this.load(true) },
+  toggleRecords() { this.setData({showAll:!this.data.showAll});return this.load() },
   input(e) {
     const values = { ...this.data.notes, [e.currentTarget.dataset.id]: e.detail.value }
     this.setData({ notes: values })
@@ -71,7 +48,7 @@ Page({
         if (!r.confirm || this.data.busy) return
         this.setData({ busy: true })
         try {
-          const route = record.external ? '/api/admin/external-trainings/' + record.reviewId : '/api/admin/experiences/' + id
+          const route = record.external ? '/api/admin/external-trainings/' + record.reviewId : '/api/admin/experiences/' + record.reviewId
           await api.request(route + '/review', 'POST', { status, note, creditHours })
           await this.load()
           wx.showToast({ title: '审核完成' })

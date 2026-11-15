@@ -7,6 +7,8 @@
         error-message="{{errorMessage}}"
         bindretry="load"
       ></status-panel>
+      <picker range="{{years}}" value="{{yearIndex}}" bindchange="changeYear"><view class="card">导出年份：{{exportYear}} 年 ›</view></picker>
+      <button wx:if="{{selected}}" bindtap="exportData" loading="{{exporting}}" disabled="{{exporting}}">导出该人员年度记录</button>
       <block wx:if="{{!selected}}">
         <view class="page-toolbar">
           <view class="muted">人员报名及参加记录</view>
@@ -21,7 +23,7 @@
           </button>
         </view>
         <input placeholder="搜索工号、姓名或学院" value="{{query}}" bindinput="search" />
-        <view class="muted">共 {{visiblePeople.length}} 人</view>
+        <view class="muted">已加载 {{visiblePeople.length}} / {{total}} 人</view>
         <view
           class="card"
           wx:for="{{visiblePeople}}"
@@ -55,6 +57,12 @@
           暂无报名记录
         </view>
       </block>
+      <view class="muted" wx:if="{{!selected && windowed}}">显示第 {{displayFrom}}—{{displayTo}} 人，可返回上一页。</view>
+      <button wx:if="{{!selected && previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{loading}}">上一页人员</button>
+      <view class="muted" wx:if="{{selected && recordWindowed}}">显示第 {{recordDisplayFrom}}—{{recordDisplayTo}} 条，可返回上一页。</view>
+      <button wx:if="{{selected && recordPreviousOffset !== null && recordPreviousOffset !== undefined}}" bindtap="previousRecords" disabled="{{loading}}">上一页记录</button>
+      <button wx:if="{{!selected && hasMore}}" bindtap="more" disabled="{{loading}}">加载更多人员</button>
+      <button wx:if="{{selected && recordHasMore}}" bindtap="moreRecords" disabled="{{loading}}">加载更早记录</button>
     </view>
   </scroll-view>
 </view>

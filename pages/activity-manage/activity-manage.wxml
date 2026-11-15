@@ -1,0 +1,54 @@
+<view class="page-shell">
+  <navigation-bar title="活动管理" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen" scroll-into-view="{{scrollTarget}}">
+    <view class="container">
+      <status-panel
+        loading="{{loading}}"
+        error-message="{{errorMessage}}"
+        bindretry="load"
+      ></status-panel>
+      <view class="page-toolbar">
+        <view class="muted">管理已发布的培训活动</view>
+        <button class="button-mini primary" size="mini" bindtap="create">发布活动</button>
+      </view>
+
+      <view class="empty" wx:if="{{!loading && !errorMessage && !activities.length}}">
+        暂无活动，点击右上方发布活动
+      </view>
+      <view class="card" wx:for="{{activities}}" wx:key="id">
+        <view class="title">{{item.title}}</view>
+        <view class="muted">{{item.startsText}} · {{item.locationText}}</view>
+        <view class="line">
+          报名 {{item.registeredCount}} / {{item.capacityText}} {{item.status === 'cancelled' ?
+          '（已取消）' : ''}}
+        </view>
+        <view class="actions">
+          <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="attendees">
+            报名与参加确认
+          </button>
+          <button
+            class="button-mini"
+            wx:if="{{item.status === 'published'}}"
+            size="mini"
+            data-id="{{item.id}}"
+            bindtap="edit"
+          >
+            编辑
+          </button>
+          <button
+            class="button-mini"
+            wx:if="{{item.status === 'published'}}"
+            size="mini"
+            data-id="{{item.id}}"
+            bindtap="cancel"
+          >
+            取消活动
+          </button>
+        </view>
+      </view>
+      <view class="muted" wx:if="{{windowed}}">当前显示第 {{displayFrom}}—{{displayTo}} 条，可返回上一页。</view>
+      <button wx:if="{{previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{loading || busy || uploading}}">上一页</button>
+      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading || busy || uploading}}">加载更多（{{activities.length}} / {{total}}）</button>
+    </view>
+  </scroll-view>
+</view>

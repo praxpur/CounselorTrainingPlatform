@@ -31,6 +31,9 @@
       <view class="muted" wx:if="{{!loading && !errorMessage && !attendees.length}}">
         暂无报名人员
       </view>
+      <view class="muted" wx:if="{{windowed}}">当前显示第 {{displayFrom}}—{{displayTo}} 条，可返回上一页。</view>
+      <button wx:if="{{previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{loading || busy || uploading}}">上一页</button>
+      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading || busy || uploading}}">加载更多报名人员</button>
     </view>
   </scroll-view>
 </view>

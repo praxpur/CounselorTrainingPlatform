@@ -76,6 +76,9 @@
         </view>
       </view>
       <view class="muted" wx:if="{{!loading && !errorMessage && !users.length}}">暂无匹配用户</view>
+      <view class="muted" wx:if="{{windowed}}">当前显示第 {{displayFrom}}—{{displayTo}} 条，可返回上一页。</view>
+      <button wx:if="{{previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{loading || busy || uploading}}">上一页</button>
+      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading || busy || uploading}}">加载更多（{{users.length}} / {{total}}）</button>
     </view>
   </scroll-view>
 </view>

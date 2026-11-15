@@ -1,4 +1,7 @@
 const api = require('../../../utils/store')
+const { loadList,cancelList } = require('../../../utils/pagination')
+const years=Array.from({length:101},(_,index)=>2000+index)
+const currentYear=new Date(Date.now()+28800000).getUTCFullYear()
 Page({
   data: {
     loading: false,
@@ -8,61 +11,45 @@ Page({
     query: '',
     selected: null,
     records: [],
+    years, exportYear:currentYear, yearIndex:currentYear-2000,
   },
   onShow() {
     this.load()
   },
-  async load() {
-    if (!api.guard()) return
-    this.setData({ loading: true, errorMessage: '' })
-    try {
-      this.setData({ people: await api.request('/api/admin/people') })
-      this.filterPeople()
-    } catch (e) {
-      this.setData({ errorMessage: e.message })
-      api.error(e)
-    } finally {
-      this.setData({ loading: false })
-    }
+  load(append = false) {
+    return loadList(this,api,{ path:'/api/admin/people?q='+encodeURIComponent(this.data.query),field:'people',append,
+      after:(_result,rows)=>({ visiblePeople:rows }) })
   },
-  async select(e) {
-    const id = e.currentTarget.dataset.id
-    this.selectedRequest = (this.selectedRequest || 0) + 1
-    const requestId = this.selectedRequest
-    this.setData({ loading: true, errorMessage: '' })
-    try {
-      const records = await api.request('/api/admin/person-records?id=' + encodeURIComponent(id))
-      if (this.selectedRequest !== requestId) return
-      this.setData({
-        selected: this.data.people.find((p) => p.id === id),
-        records: records.map(api.format),
-      })
-    } catch (err) {
-      this.setData({ errorMessage: err.message })
-      api.error(err)
-    } finally {
-      if (this.selectedRequest === requestId) this.setData({ loading: false })
-    }
+  more() { return this.load(true) },
+  select(event) {
+    const id=event.currentTarget.dataset.id
+    this.selectedId=id
+    return this.loadRecords()
   },
+  loadRecords(append=false){
+    const id=this.selectedId
+    return loadList(this,api,{ path:'/api/admin/person-records?id='+encodeURIComponent(id),field:'records',prefix:'record',append,
+      start:{ selected:this.data.people.find(person=>person.id===id)||this.data.selected },map:record=>({ ...record,startsText:api.time(record.startsAt),locationText:record.location||'地点待定' }) })
+  },
+  previous(){return this.load({pageOffset:this.data.previousOffset})},
+  moreRecords(){return this.loadRecords(true)},
+  previousRecords(){return this.loadRecords({pageOffset:this.data.recordPreviousOffset})},
   search(event) {
-    this.setData({ query: event.detail.value })
-    this.filterPeople()
+    cancelList(this,'people')
+    this.setData({ query:event.detail.value,people:[],visiblePeople:[],hasMore:false,loading:true })
+    clearTimeout(this.searchTimer)
+    this.searchTimer=setTimeout(()=>this.load(),250)
   },
-  filterPeople() {
-    const query = this.data.query.trim().toLowerCase()
-    this.setData({
-      visiblePeople: this.data.people.filter((person) =>
-        [person.id, person.name, person.department].some((value) =>
-          value.toLowerCase().includes(query),
-        ),
-      ),
-    })
+  changeYear(event) {
+    const yearIndex=Number(event.detail.value)
+    this.setData({ yearIndex,exportYear:years[yearIndex] })
   },
+  onUnload() { clearTimeout(this.searchTimer);cancelList(this,'people');cancelList(this,'records') },
   async exportData() {
     if (this.data.exporting) return
     this.setData({ exporting: true })
     try {
-      await api.exportExcel('/api/admin/exports/people', '人员报名情况.xlsx')
+      await api.exportExcel('/api/admin/exports/people?year='+this.data.exportYear+(this.data.selected?'&id='+encodeURIComponent(this.data.selected.id):'&q='+encodeURIComponent(this.data.query)), this.data.exportYear+'-人员报名情况.xlsx')
     } catch (error) {
       api.error(error)
     } finally {
@@ -70,7 +57,7 @@ Page({
     }
   },
   back() {
-    this.selectedRequest = (this.selectedRequest || 0) + 1
-    this.setData({ selected: null, records: [] })
+    cancelList(this,'records')
+    this.setData({ selected:null,records:[],loading:false,recordHasMore:false })
   },
 })

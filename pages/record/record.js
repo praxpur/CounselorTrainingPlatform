@@ -1,4 +1,5 @@
 const api = require('../../utils/store')
+const { loadList } = require('../../utils/pagination')
 
 Page({
   data: {
@@ -14,32 +15,21 @@ Page({
     uploading: false,
   },
   onShow() {
+    if(this.data.selectedId!==null)return
     this.load()
   },
-  async load() {
-    if (!api.guard()) return
-    this.setData({ loading: true, errorMessage: '', records: [], allRecords: [] })
-    try {
-      const records = (await api.request('/api/my/records')).map((r) => ({
-        ...r,
-        startsText: api.time(r.startsAt),
-        locationText: r.location || '地点待定',
-        experienceLabel:
-          { pending: '待审核', rejected: '已驳回', approved: '已通过' }[r.experienceStatus] || '',
-      }))
-      this.setData({ allRecords: records })
-      this.applyFilter()
-    } catch (error) {
-      this.setData({ errorMessage: error.message })
-      api.error(error)
-    } finally {
-      this.setData({ loading: false })
-    }
+  load(append = false) {
+    return loadList(this,api,{ path:'/api/my/records?filter='+this.data.filter,field:'records',append,start:{ allRecords:[] },
+      map:record=>({ ...record,startsText:api.time(record.startsAt),locationText:record.location||'地点待定',
+        experienceLabel:{ pending:'待审核',rejected:'已驳回',approved:'已通过' }[record.experienceStatus]||'' }),
+      after:(_result,rows)=>({ allRecords:rows }) })
   },
+  previous(){return this.load({pageOffset:this.data.previousOffset})},
+  more() { return this.load(true) },
   changeFilter(event) {
     if (this.data.busy || this.data.uploading) return
     this.setData({ filter: event.currentTarget.dataset.filter, selectedId: null, description: '' })
-    this.applyFilter()
+    this.load()
   },
   applyFilter() {
     const groups = {

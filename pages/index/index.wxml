@@ -24,7 +24,7 @@
         <view class="admin-greeting">您好，{{user.name}} · {{user.department}}</view>
         <view class="section-title">管理与统计</view>
         <view class="admin-menu">
-          <navigator class="admin-item" url="/pages/admin/admin">
+          <navigator class="admin-item" url="/pages/activity-manage/activity-manage">
             <view class="admin-icon blue">
               <image
                 class="admin-icon-image"

@@ -1,12 +1,13 @@
 const http = require('node:http')
-const { sendWorkbook } = require('./exports')
+const { sendWorkbook, assertExportAvailable } = require('./exports')
 const { personalRecords, personalAnnual } = require('./personal')
 const { createAuthentication } = require('./auth')
 const { migrateCreditUnits } = require('./credit-unit')
 const { importRoster, resetPassword } = require('./roster')
 const { createAttendance } = require('./attendance')
-const { createEvidence, proofList, externalRecords } = require('./evidence')
+const { createEvidence, proofList } = require('./evidence')
 const { createAudit } = require('./audit')
+const { pageQuery, mapPage, boundedRows } = require('./pagination')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const pathModule = require('node:path')
@@ -80,12 +81,14 @@ const fail = (status, message) => {
   throw e
 }
 const send = (res, status, value) => {
+  const json=JSON.stringify(value)
+  if(Buffer.byteLength(json,'utf8')>1024*1024)fail(413,'响应数据较大，请使用分页或缩小查询范围')
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
     'X-Content-Type-Options': 'nosniff',
   })
-  res.end(JSON.stringify(value))
+  res.end(json)
 }
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex')
 const authentication = createAuthentication(db)
@@ -246,47 +249,37 @@ function readYear(url) {
   if (!Number.isInteger(year) || year < 2000 || year > 2100) fail(400, '年份不正确')
   return year
 }
-function activityList(user, where, args, order) {
-  return all(
-    `SELECT a.*,COALESCE(counts.registered_count,0) registered_count,
+function activityList(user, where, args, order, url) {
+  const sql = `SELECT a.*,COALESCE(counts.registered_count,0) registered_count,
     own.user_id registered,own.confirmed_at confirmed_at FROM activities a
     LEFT JOIN (SELECT activity_id,COUNT(*) registered_count FROM registrations GROUP BY activity_id) counts ON counts.activity_id=a.id
     LEFT JOIN registrations own ON own.activity_id=a.id AND own.user_id=?
-    WHERE ${where} ORDER BY ${order}`,
-    user.id,
-    ...args,
-  ).map(dto)
+    WHERE ${where} ORDER BY ${order}`
+  return mapPage(pageQuery(db,sql,[user.id,...args],url),dto)
 }
-function ranking(url) {
+function ranking(url, exporting = false) {
   const year = readYear(url)
-  const start = Date.parse(year + '-01-01T00:00:00+08:00')
-  const end = Date.parse(year + 1 + '-01-01T00:00:00+08:00')
-  const external = new Map(all("SELECT user_id,COUNT(*) eventCount,ROUND(SUM(credited_hours),2) totalHours FROM external_trainings WHERE status='approved' AND occurred_on>=? AND occurred_on<? GROUP BY user_id", year + '-01-01', (year + 1) + '-01-01').map(row => [row.user_id, row]))
-  const rows = all(
-    `SELECT u.id,u.name,u.department,COUNT(a.id) eventCount,
-    ROUND(COALESCE(SUM(CASE WHEN a.id IS NOT NULL THEN r.credited_hours ELSE 0 END),0),2) totalHours
-    FROM users u LEFT JOIN registrations r ON r.user_id=u.id AND r.confirmed_at IS NOT NULL
-    LEFT JOIN activities a ON a.id=r.activity_id AND a.status='published' AND a.starts_at>=? AND a.starts_at<?
-    WHERE u.role='counselor' GROUP BY u.id`,
-    start,
-    end,
-  ).map(row => ({ ...row, eventCount: row.eventCount + (external.get(row.id)?.eventCount || 0),
-    totalHours: Math.round((row.totalHours + (external.get(row.id)?.totalHours || 0)) * 100) / 100,
-  })).sort((a, b) => b.totalHours - a.totalHours || a.id.localeCompare(b.id))
-  let previousHours, rank
-  return {
-    year,
-    rows: rows.map((person, index) => {
-      if (person.totalHours !== previousHours) rank = index + 1
-      previousHours = person.totalHours
-      return { ...person, rank }
-    }),
-  }
+  const start = Date.parse(year + '-01-01T00:00:00+08:00'), end = Date.parse((year+1) + '-01-01T00:00:00+08:00')
+  const sql = `WITH p AS (
+    SELECT r.user_id,COUNT(*) events,SUM(r.credited_hours) hours FROM registrations r JOIN activities a ON a.id=r.activity_id
+    WHERE r.confirmed_at IS NOT NULL AND a.status='published' AND a.starts_at>=? AND a.starts_at<? GROUP BY r.user_id
+  ), e AS (
+    SELECT user_id,COUNT(*) events,SUM(credited_hours) hours FROM external_trainings
+    WHERE status='approved' AND occurred_on>=? AND occurred_on<? GROUP BY user_id
+  ), totals AS (
+    SELECT u.id,u.name,u.department,COALESCE(p.events,0)+COALESCE(e.events,0) eventCount,
+      ROUND(COALESCE(p.hours,0)+COALESCE(e.hours,0),2) totalHours
+    FROM users u LEFT JOIN p ON p.user_id=u.id LEFT JOIN e ON e.user_id=u.id WHERE u.role='counselor'
+  ), ranked AS (SELECT *,RANK() OVER(ORDER BY totalHours DESC) rank FROM totals)
+  SELECT * FROM ranked ORDER BY totalHours DESC,id`
+  const result = pageQuery(db,sql,[start,end,year+'-01-01',(year+1)+'-01-01'],url,{ exporting })
+  return { year,...(Array.isArray(result) ? { rows: result } : result) }
 }
-
 function withExternalCounts(rows) {
-  const counts = new Map(all("SELECT user_id,COUNT(*) submitted,SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) approved FROM external_trainings GROUP BY user_id").map(row => [row.user_id, row]))
-  return rows.map(row => ({ ...row, externalSubmittedCount: counts.get(row.id)?.submitted || 0, externalApprovedCount: counts.get(row.id)?.approved || 0 }))
+  if (!rows.length) return rows
+  const ids = rows.map(row => row.id)
+  const counts = new Map(all("SELECT user_id,COUNT(*) submitted,SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) approved FROM external_trainings WHERE user_id IN ("+ids.map(()=>'?').join(',')+") GROUP BY user_id",...ids).map(row=>[row.user_id,row]))
+  return rows.map(row=>({ ...row,externalSubmittedCount:counts.get(row.id)?.submitted||0,externalApprovedCount:counts.get(row.id)?.approved||0 }))
 }
 
 const server = http.createServer((req, res) => audit.run(req, res, async () => {
@@ -376,6 +369,10 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     const u = requireUser(req)
     if (!['/api/me', '/api/logout'].includes(path) && authentication.mustChange(u.id))
       return send(res, 403, { error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' })
+    if (method === 'GET' && ['/api/my/exports/annual','/api/admin/exports/people','/api/admin/exports/ranking'].includes(path)) {
+      if (path.startsWith('/api/admin/')) admin(u)
+      assertExportAvailable()
+    }
     if (path === '/api/admin/audit-logs' && method === 'GET') {
       admin(u)
       return send(res, 200, audit.list(url))
@@ -385,6 +382,9 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     const proofMatch = path.match(/^\/api\/proofs\/([a-f0-9]{48})$/)
     if (proofMatch && method === 'GET') {
       const file = await evidence.download(proofMatch[1], u, () => requireUser(req))
+      res.once('finish',file.release)
+      res.once('close',file.release)
+      if(res.destroyed){file.release();return}
       res.writeHead(200, { 'Content-Type': file.mimeType, 'Content-Length': file.buffer.length,
         'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(file.name),
         'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
@@ -401,7 +401,11 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     }
     if (path === '/api/admin/external-trainings' && method === 'GET') {
       admin(u)
-      return send(res, 200, evidence.adminList())
+      return send(res, 200, evidence.adminList(url))
+    }
+    if (path === '/api/admin/reviews' && method === 'GET') {
+      admin(u)
+      return send(res,200,evidence.combinedReviews(url))
     }
     const externalReviewMatch = path.match(/^\/api\/admin\/external-trainings\/(\d+)\/review$/)
     if (externalReviewMatch && method === 'POST') {
@@ -414,7 +418,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       if (!Number.isSafeInteger(id) || id <= 0) fail(400, '活动编号无效')
       if (management) {
         admin(u)
-        if (method === 'GET' && !phase) return send(res, 200, attendance.report(id))
+        if (method === 'GET' && !phase) return send(res, 200, attendance.report(id,url))
         if (method === 'POST' && phase) {
           const input = await body(req)
           return send(res, 200, await attendance.open(id, phase, input, u, () => admin(requireUser(req))))
@@ -427,11 +431,11 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       fail(404, '接口不存在')
     }
     if (path === '/api/my/records' && method === 'GET') {
-      return send(res, 200, personalRecords(db, u.id))
+      return send(res, 200, personalRecords(db, u.id, { url }))
     }
     if (['/api/my/annual', '/api/my/exports/annual'].includes(path) && method === 'GET') {
       const year = readYear(url)
-      const report = personalAnnual(db, u.id, year)
+      const report = personalAnnual(db, u.id, year, { url, exporting: path === '/api/my/exports/annual' })
       if (path === '/api/my/annual') return send(res, 200, report)
       return await sendWorkbook(res, year + '-我的年度学时.xlsx', [
         {
@@ -489,19 +493,9 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     }
     if (path === '/api/admin/users' && method === 'GET') {
       admin(u)
-      const q = String(url.searchParams.get('q') || '')
-        .trim()
-        .slice(0, 100)
-      return send(
-        res,
-        200,
-        all(
-          "SELECT id,name,department,enabled FROM users WHERE role='counselor' AND (instr(id,?)>0 OR instr(name,?)>0 OR instr(department,?)>0) ORDER BY enabled DESC,department,name,id",
-          q,
-          q,
-          q,
-        ),
-      )
+      const q = String(url.searchParams.get('q') || '').trim().slice(0,100)
+      return send(res,200,pageQuery(db,
+        "SELECT id,name,department,enabled FROM users WHERE role='counselor' AND (instr(id,?)>0 OR instr(name,?)>0 OR instr(department,?)>0) ORDER BY enabled DESC,department,name,id",[q,q,q],url))
     }
     if (path === '/api/admin/users' && method === 'POST') {
       admin(u)
@@ -576,14 +570,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       return send(res, 200, { id, name, department, enabled })
     }
     if (path === '/api/experiences' && method === 'GET')
-      return send(
-        res,
-        200,
-        all(
-          'SELECT id,activity_id activityId,title,description,status,credit_hours creditHours,review_note reviewNote FROM experiences WHERE user_id=? ORDER BY created_at DESC',
-          u.id,
-        ),
-      )
+      return send(res,200,pageQuery(db,'SELECT id,activity_id activityId,title,description,status,credit_hours creditHours,review_note reviewNote FROM experiences WHERE user_id=? AND activity_id IS NOT NULL ORDER BY created_at DESC,id DESC',[u.id],url))
     if (path === '/api/experiences' && method === 'POST') {
       const b = await body(req),
         id = Number(b.activityId),
@@ -606,13 +593,11 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     }
     if (path === '/api/admin/experiences' && method === 'GET') {
       admin(u)
-      return send(
-        res,
-        200,
-        all(
-          "SELECT e.id,e.activity_id activityId,e.title,e.description,e.status,e.credit_hours creditHours,e.review_note reviewNote,u.name,u.department,u.id userId FROM experiences e JOIN users u ON e.user_id=u.id ORDER BY CASE WHEN e.status='pending' THEN 0 ELSE 1 END,e.created_at DESC",
-        ).map(record => ({ ...record, proofs: proofList(db, 'experience_id', record.id) })),
-      )
+      const status = url.searchParams.get('status')
+      if (status && !['pending','approved','rejected'].includes(status)) fail(400,'审核状态无效')
+      const result = pageQuery(db,
+        "SELECT e.id,e.activity_id activityId,e.title,e.description,e.status,e.credit_hours creditHours,e.review_note reviewNote,u.name,u.department,u.id userId FROM experiences e JOIN users u ON e.user_id=u.id WHERE e.activity_id IS NOT NULL" + (status ? ' AND e.status=?' : '') + " ORDER BY CASE WHEN e.status='pending' THEN 0 ELSE 1 END,e.created_at DESC,e.id DESC",status ? [status] : [],url)
+      return send(res,200,mapPage(result,record => ({ ...record,proofs:proofList(db,'experience_id',record.id) })))
     }
     const reviewMatch = path.match(/^\/api\/admin\/experiences\/(\d+)\/review$/)
     if (reviewMatch && method === 'POST') {
@@ -682,19 +667,13 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
           "a.status='published'" + yearFilter,
           [...args, Date.now()],
           'CASE WHEN a.ends_at>? THEN 0 ELSE 1 END,a.starts_at DESC,a.id DESC',
+          url,
         ),
       )
     }
     if (path === '/api/records' && method === 'GET') {
-      const ids = all(
-        'SELECT activity_id FROM registrations WHERE user_id=? ORDER BY registered_at DESC',
-        u.id,
-      )
-      return send(
-        res,
-        200,
-        ids.map((x) => dto(activity(x.activity_id, u))),
-      )
+      const rows = pageQuery(db,'SELECT activity_id FROM registrations WHERE user_id=? ORDER BY registered_at DESC,activity_id DESC',[u.id],url)
+      return send(res,200,mapPage(rows,row=>dto(activity(row.activity_id,u))))
     }
     if (path === '/api/admin/ranking' && method === 'GET') {
       admin(u)
@@ -710,7 +689,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     }
     if (path === '/api/admin/exports/ranking' && method === 'GET') {
       admin(u)
-      const report = ranking(url)
+      const report = ranking(url, true)
       return await sendWorkbook(res, report.year + '-年度学时排名.xlsx', [
         {
           name: report.year + '年度学时排名',
@@ -728,13 +707,30 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     }
     if (path === '/api/admin/exports/people' && method === 'GET') {
       admin(u)
-      const summary = withExternalCounts(all(
-        "SELECT u.id,u.name,u.department,COUNT(r.activity_id) registeredCount,COUNT(r.confirmed_at) confirmedCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' GROUP BY u.id ORDER BY u.department,u.name,u.id",
-      ))
-      const details = all(
-        "SELECT u.id,u.name,u.department,a.title,a.starts_at startsAt,a.location,a.status,r.registered_at registeredAt,r.confirmed_at confirmedAt,r.credited_hours creditedHours FROM registrations r JOIN users u ON u.id=r.user_id JOIN activities a ON a.id=r.activity_id WHERE u.role='counselor' ORDER BY u.department,u.id,a.starts_at",
-      )
-      const externalRows = all("SELECT u.id,u.name,u.department,e.title,e.organizer,e.occurred_on occurredOn,e.requested_hours requestedHours,e.credited_hours creditHours,e.status,e.review_note reviewNote FROM external_trainings e JOIN users u ON u.id=e.user_id ORDER BY e.occurred_on DESC,e.id DESC")
+      const userId = url.searchParams.get('id')
+      if (userId && (!/^[a-zA-Z0-9_-]{1,40}$/.test(userId) || !get("SELECT id FROM users WHERE id=? AND role='counselor'",userId))) fail(404,'辅导员不存在')
+      const year = url.searchParams.has('year') ? readYear(url) : null
+      const q=String(url.searchParams.get('q')||'').trim().slice(0,100)
+      const detailFilters = [], detailArgs = [], externalFilters = [], externalArgs = []
+      if (userId) { detailFilters.push('u.id=?');detailArgs.push(userId);externalFilters.push('u.id=?');externalArgs.push(userId) }
+      if(q){const search='(instr(lower(u.id),lower(?))>0 OR instr(lower(u.name),lower(?))>0 OR instr(lower(u.department),lower(?))>0)';detailFilters.push(search);detailArgs.push(q,q,q);externalFilters.push(search);externalArgs.push(q,q,q)}
+      if (year) {
+        detailFilters.push('a.starts_at>=? AND a.starts_at<?')
+        detailArgs.push(Date.parse(year+'-01-01T00:00:00+08:00'),Date.parse((year+1)+'-01-01T00:00:00+08:00'))
+        externalFilters.push('e.occurred_on>=? AND e.occurred_on<?');externalArgs.push(year+'-01-01',(year+1)+'-01-01')
+      }
+      const details = boundedRows(db,
+        "SELECT u.id,u.name,u.department,a.title,a.starts_at startsAt,a.location,a.status,r.registered_at registeredAt,r.confirmed_at confirmedAt,r.credited_hours creditedHours FROM registrations r JOIN users u ON u.id=r.user_id JOIN activities a ON a.id=r.activity_id WHERE u.role='counselor'"+(detailFilters.length?' AND '+detailFilters.join(' AND '):'')+' ORDER BY u.department,u.id,a.starts_at,a.id',detailArgs,10000,true)
+      const externalRows = boundedRows(db,
+        "SELECT u.id,u.name,u.department,e.title,e.organizer,e.occurred_on occurredOn,e.requested_hours requestedHours,e.credited_hours creditHours,e.status,e.review_note reviewNote FROM external_trainings e JOIN users u ON u.id=e.user_id WHERE u.role='counselor'"+(externalFilters.length?' AND '+externalFilters.join(' AND '):'')+' ORDER BY e.occurred_on DESC,e.id DESC',externalArgs,10000,true)
+      const userFilters=[],userArgs=[]
+      if(userId){userFilters.push('id=?');userArgs.push(userId)}
+      if(q){userFilters.push('(instr(lower(id),lower(?))>0 OR instr(lower(name),lower(?))>0 OR instr(lower(department),lower(?))>0)');userArgs.push(q,q,q)}
+      const users=boundedRows(db,"SELECT id,name,department FROM users WHERE role='counselor'"+(userFilters.length?' AND '+userFilters.join(' AND '):'')+' ORDER BY department,name,id',userArgs,10000,true)
+      const byUser = new Map(users.map(row=>[row.id,{ ...row,registeredCount:0,confirmedCount:0,externalSubmittedCount:0,externalApprovedCount:0 }]))
+      for (const row of details) { const target=byUser.get(row.id);target.registeredCount++;if(row.confirmedAt)target.confirmedCount++ }
+      for (const row of externalRows) { const target=byUser.get(row.id);target.externalSubmittedCount++;if(row.status==='approved')target.externalApprovedCount++ }
+      const summary = [...byUser.values()]
       const formatTime = (value) => (value ? new Date(value + 8 * 3600000) : null)
       return await sendWorkbook(res, '人员报名情况.xlsx', [
         {
@@ -793,31 +789,21 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     }
     if (path === '/api/admin/people' && method === 'GET') {
       admin(u)
-      return send(
-        res,
-        200,
-        withExternalCounts(all(
-          "SELECT u.id,u.name,u.department,COUNT(r.activity_id) registeredCount,COUNT(r.confirmed_at) confirmedCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' GROUP BY u.id ORDER BY u.department,u.name",
-        )),
-      )
+      const q = String(url.searchParams.get('q') || '').trim().slice(0,100)
+      const result = pageQuery(db,
+        "SELECT u.id,u.name,u.department,COUNT(r.activity_id) registeredCount,COUNT(r.confirmed_at) confirmedCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' AND (instr(lower(u.id),lower(?))>0 OR instr(lower(u.name),lower(?))>0 OR instr(lower(u.department),lower(?))>0) GROUP BY u.id ORDER BY u.department,u.name,u.id",[q,q,q],url)
+      const rows = withExternalCounts(Array.isArray(result) ? result : result.rows)
+      return send(res,200,Array.isArray(result) ? rows : { ...result,rows })
     }
     if (path === '/api/admin/person-records' && method === 'GET') {
       admin(u)
       const userId = url.searchParams.get('id')
       if (!userId || !get('SELECT id FROM users WHERE id=?', userId)) fail(404, '人员不存在')
-      const person = { id: userId }
-      return send(
-        res,
-        200,
-        all(
-          'SELECT activity_id FROM registrations WHERE user_id=? ORDER BY registered_at DESC',
-          userId,
-        ).map((x) => dto(activity(x.activity_id, person))).concat(externalRecords(db, userId).map(record => ({ ...record, registered: true, endsAt: record.startsAt, description: record.experience }))),
-      )
+      return send(res,200,personalRecords(db,userId,{ url }))
     }
     if (path === '/api/admin/activities' && method === 'GET') {
       admin(u)
-      return send(res, 200, activityList(u, '1=1', [], 'a.created_at DESC,a.id DESC'))
+      return send(res, 200, activityList(u, '1=1', [], 'a.created_at DESC,a.id DESC', url))
     }
     if (path === '/api/admin/activities' && method === 'POST') {
       admin(u)
@@ -909,9 +895,9 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       return send(
         res,
         200,
-        all(
-          'SELECT u.id,u.name,u.department,r.registered_at registeredAt,r.confirmed_at confirmedAt FROM registrations r JOIN users u ON r.user_id=u.id WHERE r.activity_id=? ORDER BY r.registered_at',
-          Number(m[1]),
+        pageQuery(db,
+          'SELECT u.id,u.name,u.department,r.registered_at registeredAt,r.confirmed_at confirmedAt FROM registrations r JOIN users u ON r.user_id=u.id WHERE r.activity_id=? ORDER BY r.registered_at,u.id',
+          [Number(m[1])], url,
         ),
       )
     }

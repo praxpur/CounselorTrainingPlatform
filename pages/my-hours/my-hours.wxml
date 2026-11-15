@@ -71,6 +71,9 @@
         </view>
         <view class="empty" wx:if="{{!records.length}}">该年度暂无活动记录</view>
       </block>
+      <view class="muted" wx:if="{{windowed}}">当前显示第 {{displayFrom}}—{{displayTo}} 条，可返回上一页。</view>
+      <button wx:if="{{previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{loading || busy || uploading}}">上一页</button>
+      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading || busy || uploading}}">加载更多（{{records.length}} / {{total}}）</button>
     </view>
   </scroll-view>
 </view>

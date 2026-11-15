@@ -1,4 +1,5 @@
 const api = require('../../../utils/store')
+const { loadList } = require('../../../utils/pagination')
 const currentYear = new Date(Date.now() + 8 * 3600000).getUTCFullYear()
 const years = Array.from({ length: 101 }, (_, index) => 2000 + index)
 
@@ -35,22 +36,10 @@ Page({
       this.setData({ exporting: false })
     }
   },
-  async load() {
-    if (!api.guard()) return
-    const requestId = (this.requestId || 0) + 1
-    this.requestId = requestId
-    this.setData({ loading: true, errorMessage: '', loadedYear: null, rows: [] })
-    try {
-      const report = await api.request('/api/admin/ranking?year=' + this.data.year)
-      if (this.requestId !== requestId) return
-      this.setData({ loadedYear: report.year, rows: report.rows })
-    } catch (error) {
-      if (this.requestId === requestId) {
-        this.setData({ errorMessage: error.message })
-        api.error(error)
-      }
-    } finally {
-      if (this.requestId === requestId) this.setData({ loading: false })
-    }
+  load(append = false) {
+    return loadList(this,api,{ path:'/api/admin/ranking?year='+this.data.year,field:'rows',append,
+      start:{ loadedYear:null },after:report=>({ loadedYear:report.year }) })
   },
+  previous(){return this.load({pageOffset:this.data.previousOffset})},
+  more() { return this.load(true) },
 })

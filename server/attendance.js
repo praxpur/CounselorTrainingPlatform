@@ -1,3 +1,4 @@
+const { pageQuery } = require('./pagination')
 const crypto = require('node:crypto')
 const QRCode = require('qrcode')
 const digest = value => crypto.createHash('sha256').update(value).digest('hex')
@@ -34,9 +35,11 @@ function createAttendance(db) {
     state(id, user) {
       return { sessions: sessions(id), records: db.prepare('SELECT phase,method,recorded_at recordedAt,distance,accuracy FROM attendance_records WHERE activity_id=? AND user_id=? ORDER BY recorded_at').all(id, user.id) }
     },
-    report(id) {
-      return { sessions: sessions(id), records: db.prepare(`SELECT r.user_id userId,u.name,u.department,r.phase,r.method,r.recorded_at recordedAt,r.distance,r.accuracy
-        FROM attendance_records r JOIN users u ON r.user_id=u.id WHERE activity_id=? ORDER BY recorded_at DESC`).all(id) }
+    report(id,url) {
+      const result=pageQuery(db,`SELECT r.user_id userId,u.name,u.department,r.phase,r.method,r.recorded_at recordedAt,r.distance,r.accuracy
+        FROM attendance_records r JOIN users u ON r.user_id=u.id WHERE activity_id=? ORDER BY recorded_at DESC,r.user_id,r.phase`,[id],url)
+      return { sessions:sessions(id),records:Array.isArray(result)?result:result.rows,
+        ...(Array.isArray(result)?{}:{ total:result.total,hasMore:result.hasMore,nextOffset:result.nextOffset }) }
     },
     async open(id, phase, input, actor, authorize) {
       if (!['in', 'out'].includes(phase)) fail(400, '签到类型错误')

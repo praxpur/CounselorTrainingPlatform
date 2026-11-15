@@ -18,7 +18,8 @@ Page({
       } else {
         wx.showTabBar({ animation: false })
         this.setData({ user })
-        const activities = await api.request('/api/activities')
+        const result = await api.request('/api/activities?limit=5&offset=0')
+        const activities = Array.isArray(result) ? result : result.rows
         this.setData({ activities: activities.slice(0, 5).map(api.format), loading: false })
       }
     } catch (e) {

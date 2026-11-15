@@ -110,7 +110,7 @@ function exportExcel(path, filename) {
         if (result.statusCode !== 200) {
           if (result.statusCode === 401) wx.removeStorageSync(TOKEN_KEY)
           reject(
-            new Error(result.statusCode === 403 ? '无导出权限' : '导出失败，请重新登录或稍后重试'),
+            new Error(({401:'请重新登录',403:'无导出权限',413:'导出数据过多，请按年份或人员分批导出',429:'当前有导出任务，请稍后重试',503:'导出资源不足或超时，请缩小范围重试'})[result.statusCode] || '导出失败，请稍后重试'),
           )
           return
         }
