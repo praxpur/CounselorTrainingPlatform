@@ -74,15 +74,17 @@ function format(a) {
   const registrationText =
     a.status === 'cancelled'
       ? '活动已取消'
-      : a.registered
-        ? '已报名'
-        : a.endsAt <= now
-          ? '活动已结束'
-          : a.startsAt <= now
-            ? '报名已截止'
-            : a.capacity !== null && a.registeredCount >= a.capacity
-              ? '名额已满'
-              : '报名开放中'
+      : a.withdrawnAt
+        ? '已取消报名'
+        : a.registered
+          ? '已报名'
+          : a.endsAt <= now
+            ? '活动已结束'
+            : a.startsAt <= now
+              ? '报名已截止'
+              : a.capacity !== null && a.registeredCount >= a.capacity
+                ? '名额已满'
+                : '报名开放中'
   return {
     ...a,
     startsText: time(a.startsAt),
@@ -92,6 +94,7 @@ function format(a) {
     confirmedText: a.confirmedAt ? time(a.confirmedAt) : '',
     registrationText,
     activityState: a.endsAt <= now ? '已结束' : a.startsAt <= now ? '进行中' : '未开始',
+    canWithdraw: a.status === 'published' && a.registered && !a.confirmedAt && a.startsAt > now,
     canRegister:
       a.status === 'published' &&
       !a.registered &&

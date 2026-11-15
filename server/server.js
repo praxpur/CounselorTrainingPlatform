@@ -3,6 +3,7 @@ const { sendWorkbook, assertExportAvailable } = require('./exports')
 const { personalRecords, personalAnnual } = require('./personal')
 const { createAuthentication } = require('./auth')
 const { migrateCreditUnits } = require('./credit-unit')
+const { ensureRegistrationSchema,createRegistration } = require('./registration')
 const { importRoster, resetPassword } = require('./roster')
 const { createAttendance } = require('./attendance')
 const { createEvidence, proofList } = require('./evidence')
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS activities(id INTEGER PRIMARY KEY, title TEXT NOT NUL
 CREATE TABLE IF NOT EXISTS registrations(activity_id INTEGER NOT NULL REFERENCES activities(id), user_id TEXT NOT NULL REFERENCES users(id), registered_at INTEGER NOT NULL, checked_in_at INTEGER, checked_in_by TEXT REFERENCES users(id), PRIMARY KEY(activity_id,user_id));
 CREATE INDEX IF NOT EXISTS registration_user ON registrations(user_id);`)
 migrateCreditUnits(db)
+ensureRegistrationSchema(db)
 const get = (sql, ...args) => db.prepare(sql).get(...args)
 if (
   !db
@@ -95,6 +97,7 @@ const authentication = createAuthentication(db)
 const attendance = createAttendance(db)
 const evidence = createEvidence(db)
 const audit = createAudit(db)
+const registration = createRegistration(db)
 function body(req) {
   return new Promise((resolve, reject) => {
     const chunks = []
@@ -231,11 +234,16 @@ function dto(a) {
     registeredCount: a.registered_count,
     registered: !!a.registered,
     confirmedAt: a.confirmed_at || null,
+    withdrawnAt: a.withdrawn_at || null,
   }
 }
 function activity(id, user) {
   const a = get(
-    `SELECT a.*, (SELECT COUNT(*) FROM registrations r WHERE r.activity_id=a.id) registered_count, (SELECT 1 FROM registrations r WHERE r.activity_id=a.id AND r.user_id=?) registered, (SELECT confirmed_at FROM registrations r WHERE r.activity_id=a.id AND r.user_id=?) confirmed_at FROM activities a WHERE a.id=?`,
+    `SELECT a.*, (SELECT COUNT(*) FROM registrations r WHERE r.activity_id=a.id AND r.cancelled_at IS NULL) registered_count,
+      (SELECT 1 FROM registrations r WHERE r.activity_id=a.id AND r.user_id=? AND r.cancelled_at IS NULL) registered,
+      (SELECT confirmed_at FROM registrations r WHERE r.activity_id=a.id AND r.user_id=? AND r.cancelled_at IS NULL) confirmed_at,
+      (SELECT cancelled_at FROM registrations r WHERE r.activity_id=a.id AND r.user_id=?) withdrawn_at FROM activities a WHERE a.id=?`,
+    user.id,
     user.id,
     user.id,
     id,
@@ -251,8 +259,9 @@ function readYear(url) {
 }
 function activityList(user, where, args, order, url) {
   const sql = `SELECT a.*,COALESCE(counts.registered_count,0) registered_count,
-    own.user_id registered,own.confirmed_at confirmed_at FROM activities a
-    LEFT JOIN (SELECT activity_id,COUNT(*) registered_count FROM registrations GROUP BY activity_id) counts ON counts.activity_id=a.id
+    CASE WHEN own.cancelled_at IS NULL THEN own.user_id END registered,
+    CASE WHEN own.cancelled_at IS NULL THEN own.confirmed_at END confirmed_at,own.cancelled_at withdrawn_at FROM activities a
+    LEFT JOIN (SELECT activity_id,COUNT(*) registered_count FROM registrations WHERE cancelled_at IS NULL GROUP BY activity_id) counts ON counts.activity_id=a.id
     LEFT JOIN registrations own ON own.activity_id=a.id AND own.user_id=?
     WHERE ${where} ORDER BY ${order}`
   return mapPage(pageQuery(db,sql,[user.id,...args],url),dto)
@@ -262,7 +271,7 @@ function ranking(url, exporting = false) {
   const start = Date.parse(year + '-01-01T00:00:00+08:00'), end = Date.parse((year+1) + '-01-01T00:00:00+08:00')
   const sql = `WITH p AS (
     SELECT r.user_id,COUNT(*) events,SUM(r.credited_hours) hours FROM registrations r JOIN activities a ON a.id=r.activity_id
-    WHERE r.confirmed_at IS NOT NULL AND a.status='published' AND a.starts_at>=? AND a.starts_at<? GROUP BY r.user_id
+    WHERE r.confirmed_at IS NOT NULL AND r.cancelled_at IS NULL AND a.status='published' AND a.starts_at>=? AND a.starts_at<? GROUP BY r.user_id
   ), e AS (
     SELECT user_id,COUNT(*) events,SUM(credited_hours) hours FROM external_trainings
     WHERE status='approved' AND occurred_on>=? AND occurred_on<? GROUP BY user_id
@@ -622,7 +631,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
           if (a.starts_at > Date.now()) fail(409, '活动尚未开始，不能确认参加')
           evidence.preventDuplicateCredit(a, exp.user_id)
           run(
-            'UPDATE registrations SET confirmed_at=COALESCE(confirmed_at,?),confirmed_by=COALESCE(confirmed_by,?),credited_hours=CASE WHEN confirmed_at IS NULL THEN ? ELSE credited_hours END WHERE activity_id=? AND user_id=?',
+            'UPDATE registrations SET confirmed_at=COALESCE(confirmed_at,?),confirmed_by=COALESCE(confirmed_by,?),credited_hours=CASE WHEN confirmed_at IS NULL THEN ? ELSE credited_hours END WHERE activity_id=? AND user_id=? AND cancelled_at IS NULL',
             Date.now(),
             u.id,
             a.credit_hours,
@@ -720,15 +729,15 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
         externalFilters.push('e.occurred_on>=? AND e.occurred_on<?');externalArgs.push(year+'-01-01',(year+1)+'-01-01')
       }
       const details = boundedRows(db,
-        "SELECT u.id,u.name,u.department,a.title,a.starts_at startsAt,a.location,a.status,r.registered_at registeredAt,r.confirmed_at confirmedAt,r.credited_hours creditedHours FROM registrations r JOIN users u ON u.id=r.user_id JOIN activities a ON a.id=r.activity_id WHERE u.role='counselor'"+(detailFilters.length?' AND '+detailFilters.join(' AND '):'')+' ORDER BY u.department,u.id,a.starts_at,a.id',detailArgs,10000,true)
+        "SELECT u.id,u.name,u.department,a.title,a.starts_at startsAt,a.location,a.status,r.registered_at registeredAt,r.confirmed_at confirmedAt,r.cancelled_at withdrawnAt,r.credited_hours creditedHours FROM registrations r JOIN users u ON u.id=r.user_id JOIN activities a ON a.id=r.activity_id WHERE u.role='counselor'"+(detailFilters.length?' AND '+detailFilters.join(' AND '):'')+' ORDER BY u.department,u.id,a.starts_at,a.id',detailArgs,10000,true)
       const externalRows = boundedRows(db,
         "SELECT u.id,u.name,u.department,e.title,e.organizer,e.occurred_on occurredOn,e.requested_hours requestedHours,e.credited_hours creditHours,e.status,e.review_note reviewNote FROM external_trainings e JOIN users u ON u.id=e.user_id WHERE u.role='counselor'"+(externalFilters.length?' AND '+externalFilters.join(' AND '):'')+' ORDER BY e.occurred_on DESC,e.id DESC',externalArgs,10000,true)
       const userFilters=[],userArgs=[]
       if(userId){userFilters.push('id=?');userArgs.push(userId)}
       if(q){userFilters.push('(instr(lower(id),lower(?))>0 OR instr(lower(name),lower(?))>0 OR instr(lower(department),lower(?))>0)');userArgs.push(q,q,q)}
       const users=boundedRows(db,"SELECT id,name,department FROM users WHERE role='counselor'"+(userFilters.length?' AND '+userFilters.join(' AND '):'')+' ORDER BY department,name,id',userArgs,10000,true)
-      const byUser = new Map(users.map(row=>[row.id,{ ...row,registeredCount:0,confirmedCount:0,externalSubmittedCount:0,externalApprovedCount:0 }]))
-      for (const row of details) { const target=byUser.get(row.id);target.registeredCount++;if(row.confirmedAt)target.confirmedCount++ }
+      const byUser = new Map(users.map(row=>[row.id,{ ...row,registeredCount:0,confirmedCount:0,historicalRegisteredCount:0,withdrawnCount:0,externalSubmittedCount:0,externalApprovedCount:0 }]))
+      for (const row of details) { const target=byUser.get(row.id);target.historicalRegisteredCount++;if(row.withdrawnAt)target.withdrawnCount++;else{target.registeredCount++;if(row.confirmedAt)target.confirmedCount++} }
       for (const row of externalRows) { const target=byUser.get(row.id);target.externalSubmittedCount++;if(row.status==='approved')target.externalApprovedCount++ }
       const summary = [...byUser.values()]
       const formatTime = (value) => (value ? new Date(value + 8 * 3600000) : null)
@@ -739,8 +748,10 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
             { header: '工号', key: 'id', width: 20 },
             { header: '姓名', key: 'name', width: 18 },
             { header: '学院 / 部门', key: 'department', width: 28 },
-            { header: '报名次数（含取消活动）', key: 'registeredCount', width: 28 },
+            { header: '未取消报名活动数（含取消活动）', key: 'registeredCount', width: 28 },
             { header: '已确认次数（含取消活动）', key: 'confirmedCount', width: 30 },
+            { header: '历史报名活动数', key: 'historicalRegisteredCount', width: 22 },
+            { header: '取消报名活动数', key: 'withdrawnCount', width: 22 },
             { header: '自行提交次数', key: 'externalSubmittedCount', width: 20 },
             { header: '自行提交通过次数', key: 'externalApprovedCount', width: 22 },
           ],
@@ -774,8 +785,8 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
             startsText: formatTime(r.startsAt),
             registeredText: formatTime(r.registeredAt),
             state:
-              r.status === 'cancelled' ? '活动已取消' : r.confirmedAt ? '已确认参加' : '待确认参加',
-            hours: r.status === 'published' && r.confirmedAt ? r.creditedHours : 0,
+              r.status === 'cancelled' ? '活动已取消' : r.withdrawnAt ? '已取消报名' : r.confirmedAt ? '已确认参加' : '待确认参加',
+            hours: r.status === 'published' && r.confirmedAt && !r.withdrawnAt ? r.creditedHours : 0,
           })),
         },
         ...(externalRows.length ? [{ name: '自行提交活动', columns: [
@@ -791,7 +802,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       admin(u)
       const q = String(url.searchParams.get('q') || '').trim().slice(0,100)
       const result = pageQuery(db,
-        "SELECT u.id,u.name,u.department,COUNT(r.activity_id) registeredCount,COUNT(r.confirmed_at) confirmedCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' AND (instr(lower(u.id),lower(?))>0 OR instr(lower(u.name),lower(?))>0 OR instr(lower(u.department),lower(?))>0) GROUP BY u.id ORDER BY u.department,u.name,u.id",[q,q,q],url)
+        "SELECT u.id,u.name,u.department,SUM(CASE WHEN r.activity_id IS NOT NULL AND r.cancelled_at IS NULL THEN 1 ELSE 0 END) registeredCount,SUM(CASE WHEN r.confirmed_at IS NOT NULL AND r.cancelled_at IS NULL THEN 1 ELSE 0 END) confirmedCount,COUNT(r.activity_id) historicalRegisteredCount,SUM(CASE WHEN r.cancelled_at IS NOT NULL THEN 1 ELSE 0 END) withdrawnCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' AND (instr(lower(u.id),lower(?))>0 OR instr(lower(u.name),lower(?))>0 OR instr(lower(u.department),lower(?))>0) GROUP BY u.id ORDER BY u.department,u.name,u.id",[q,q,q],url)
       const rows = withExternalCounts(Array.isArray(result) ? result : result.rows)
       return send(res,200,Array.isArray(result) ? rows : { ...result,rows })
     }
@@ -818,31 +829,19 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     let m = path.match(/^\/api\/activities\/(\d+)$/)
     if (m && method === 'GET') {
       const a = activity(Number(m[1]), u)
-      if (a.status !== 'published' && !a.registered && u.role !== 'admin') fail(404, '活动不存在')
+      if (a.status !== 'published' && !a.registered && !a.withdrawn_at && u.role !== 'admin') fail(404, '活动不存在')
       return send(res, 200, dto(a))
     }
     m = path.match(/^\/api\/activities\/(\d+)\/register$/)
     if (m && method === 'POST') {
-      const id = Number(m[1])
-      db.exec('BEGIN IMMEDIATE')
-      try {
-        const a = activity(id, u)
-        if (a.status !== 'published' || a.starts_at <= Date.now())
-          fail(409, '活动已取消或报名已截止')
-        if (a.registered) fail(409, '您已报名')
-        if (a.capacity > 0 && a.registered_count >= a.capacity) fail(409, '报名人数已满')
-        run(
-          'INSERT INTO registrations(activity_id,user_id,registered_at) VALUES(?,?,?)',
-          id,
-          u.id,
-          Date.now(),
-        )
-        db.exec('COMMIT')
-      } catch (e) {
-        db.exec('ROLLBACK')
-        throw e
-      }
-      return send(res, 200, dto(activity(id, u)))
+      const id=Number(m[1])
+      registration.register(id,u.id,()=>requireUser(req))
+      return send(res,200,dto(activity(id,u)))
+    }
+    if (m && method === 'DELETE') {
+      const id=Number(m[1])
+      registration.cancel(id,u.id,()=>requireUser(req))
+      return send(res,200,dto(activity(id,u)))
     }
     m = path.match(/^\/api\/admin\/activities\/(\d+)$/)
     if (m && method === 'PUT') {
@@ -896,7 +895,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
         res,
         200,
         pageQuery(db,
-          'SELECT u.id,u.name,u.department,r.registered_at registeredAt,r.confirmed_at confirmedAt FROM registrations r JOIN users u ON r.user_id=u.id WHERE r.activity_id=? ORDER BY r.registered_at,u.id',
+          'SELECT u.id,u.name,u.department,r.registered_at registeredAt,r.confirmed_at confirmedAt FROM registrations r JOIN users u ON r.user_id=u.id WHERE r.activity_id=? AND r.cancelled_at IS NULL ORDER BY r.registered_at,u.id',
           [Number(m[1])], url,
         ),
       )
@@ -912,7 +911,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       try {
         evidence.preventDuplicateCredit(a, String(b.userId || ''))
         const result = run(
-          'UPDATE registrations SET confirmed_at=?,confirmed_by=?,credited_hours=? WHERE activity_id=? AND user_id=? AND confirmed_at IS NULL',
+          'UPDATE registrations SET confirmed_at=?,confirmed_by=?,credited_hours=? WHERE activity_id=? AND user_id=? AND confirmed_at IS NULL AND cancelled_at IS NULL',
           Date.now(),
           u.id,
           a.credit_hours,

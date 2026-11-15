@@ -77,7 +77,7 @@ function createAttendance(db) {
       if (user.role !== 'counselor') fail(403, '仅辅导员可签到')
       const event = activity(id), now = Date.now()
       if (event.status !== 'published') fail(409, '活动已取消')
-      if (!db.prepare('SELECT user_id FROM registrations WHERE activity_id=? AND user_id=?').get(id, user.id)) fail(403, '请先报名活动')
+      if (!db.prepare('SELECT user_id FROM registrations WHERE activity_id=? AND user_id=? AND cancelled_at IS NULL').get(id, user.id)) fail(403, '请先报名活动')
       const session = db.prepare('SELECT * FROM attendance_sessions WHERE activity_id=? AND phase=?').get(id, phase)
       if (!session || session.opens_at > now || session.closes_at <= now) fail(409, '尚未开放或已截止，请刷新活动')
       if (db.prepare('SELECT phase FROM attendance_records WHERE activity_id=? AND user_id=? AND phase=?').get(id, user.id, phase)) fail(409, '已完成本次' + (phase === 'in' ? '签到' : '签退'))

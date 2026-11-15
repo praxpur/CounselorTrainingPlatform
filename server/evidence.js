@@ -87,7 +87,7 @@ function createEvidence(db) {
   }
   function platformDuplicate(title, occurredOn, userId) {
     const start = Date.parse(occurredOn + 'T00:00:00+08:00')
-    return db.prepare("SELECT a.id FROM activities a JOIN registrations r ON r.activity_id=a.id WHERE r.user_id=? AND a.title=? AND a.status='published' AND a.starts_at>=? AND a.starts_at<?").get(userId, title, start, start + 86400000)
+    return db.prepare("SELECT a.id FROM activities a JOIN registrations r ON r.activity_id=a.id WHERE r.user_id=? AND r.cancelled_at IS NULL AND a.title=? AND a.status='published' AND a.starts_at>=? AND a.starts_at<?").get(userId, title, start, start + 86400000)
   }
   return {
     combinedReviews(url) {

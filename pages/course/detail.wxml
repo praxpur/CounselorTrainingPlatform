@@ -15,7 +15,7 @@
         <view class="line">报名：{{activity.registeredCount}} / {{activity.capacityText}}</view>
         <view class="line">
           状态：{{activity.status === 'cancelled' ? '已取消' : activity.confirmedAt ? '已确认参加' :
-          activity.registered ? '已报名' : '未报名'}}
+          activity.withdrawnAt ? '已取消报名' : activity.registered ? '已报名' : '未报名'}}
         </view>
       </view>
       <view class="card">
@@ -32,6 +32,8 @@
         {{activity.registered ? '已报名' : activity.canRegister ? '报名参加' :
         activity.registrationText}}
       </button>
+      <button wx:if="{{activity.canWithdraw}}" bindtap="withdraw" disabled="{{busy || loading}}">取消报名</button>
+      <view class="muted" wx:if="{{activity.registered}}">活动开始前可取消报名；开始后不可自主取消。</view>
     </view>
   </scroll-view>
 </view>

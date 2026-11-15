@@ -17,7 +17,7 @@ function createAudit(db) {
   const tables = [
     ['users', ['id','name','department','role','enabled'], row => row + '.id'],
     ['activities', ['title','description','location','starts_at','ends_at','capacity','credit_hours','status'], row => row + '.id'],
-    ['registrations', ['activity_id','user_id','registered_at','confirmed_at','confirmed_by','credited_hours'], row => row + ".activity_id || ':' || " + row + '.user_id'],
+    ['registrations', ['activity_id','user_id','registered_at','cancelled_at','confirmed_at','confirmed_by','credited_hours'], row => row + ".activity_id || ':' || " + row + '.user_id'],
     ['experiences', ['user_id','activity_id','title','description','status','credit_hours','reviewed_by','reviewed_at','review_note'], row => row + '.id'],
     ['external_trainings', ['user_id','title','organizer','occurred_on','requested_hours','description','status','credited_hours','reviewed_by','reviewed_at','review_note'], row => row + '.id'],
     ['credentials', ['user_id','must_change'], row => row + '.user_id'],
@@ -26,17 +26,22 @@ function createAudit(db) {
     ['attendance_sessions', ['activity_id','phase','method','opens_at','closes_at','latitude','longitude','radius','created_by'], row => row + ".activity_id || ':' || " + row + '.phase'],
     ['attendance_records', ['activity_id','user_id','phase','method','recorded_at','distance','accuracy'], row => row + ".activity_id || ':' || " + row + ".user_id || ':' || " + row + '.phase'],
   ]
-  for (const [table, fields, target] of tables) {
-    const snapshot = row => 'json_object(' + fields.map(field => "'" + field + "'," + row + '.' + field).join(',') + ')'
-    for (const operation of ['INSERT','UPDATE','DELETE']) {
-      const before = operation === 'INSERT' ? 'NULL' : snapshot('OLD')
-      const after = operation === 'DELETE' ? 'NULL' : snapshot('NEW')
-      // 所有 SQL 标识符来自上面的静态白名单。
-      db.exec(`CREATE TRIGGER IF NOT EXISTS audit_${table}_${operation.toLowerCase()} AFTER ${operation} ON ${table}
-        BEGIN INSERT INTO audit_logs(happened_at,actor_id,action,target,outcome,detail,request_id)
-        VALUES(audit_now(),audit_actor(),'${table}.${operation.toLowerCase()}',CAST(${target(operation === 'DELETE' ? 'OLD' : 'NEW')} AS TEXT),'success',json_object('before',${before},'after',${after}),audit_request()); END;`)
+  // 刷新触发器必须在单个写事务内，其他进程不能遇到无审计的空窗。
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    for (const [table, fields, target] of tables) {
+      const snapshot = row => 'json_object(' + fields.map(field => "'" + field + "'," + row + '.' + field).join(',') + ')'
+      for (const operation of ['INSERT','UPDATE','DELETE']) {
+        const before = operation === 'INSERT' ? 'NULL' : snapshot('OLD')
+        const after = operation === 'DELETE' ? 'NULL' : snapshot('NEW')
+        // 所有 SQL 标识符来自上面的静态白名单。
+        db.exec(`DROP TRIGGER IF EXISTS audit_${table}_${operation.toLowerCase()}; CREATE TRIGGER audit_${table}_${operation.toLowerCase()} AFTER ${operation} ON ${table}
+          BEGIN INSERT INTO audit_logs(happened_at,actor_id,action,target,outcome,detail,request_id)
+          VALUES(audit_now(),audit_actor(),'${table}.${operation.toLowerCase()}',CAST(${target(operation === 'DELETE' ? 'OLD' : 'NEW')} AS TEXT),'success',json_object('before',${before},'after',${after}),audit_request()); END;`)
+      }
     }
-  }
+    db.exec('COMMIT')
+  } catch(error) { db.exec('ROLLBACK');throw error }
   function record(req, action, target, status) {
     db.prepare('INSERT INTO audit_logs(happened_at,actor_id,action,target,outcome,detail,request_id) VALUES(?,?,?,?,?,?,?)').run(
       Date.now(), req.authenticatedUser || (status < 400 ? req.auditAccount : null) || 'anonymous', action, target,
