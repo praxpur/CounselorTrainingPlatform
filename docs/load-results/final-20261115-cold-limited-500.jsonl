@@ -1,0 +1,13 @@
+{"type":"runtime","node":"v26.12.1","uv":"1.52.1","os":"10.0.26300","storageMode":"temporary-disk","journalMode":"wal","synchronous":2,"users":500}
+{"type":"scenario","mode":"business","connectionMode":"cold-burst","sameProcess":false,"registerFirst":true,"capacity":125}
+{"phase":"registration","concurrentUsers":500,"statuses":{"200":125,"409":375},"httpResponseRate":1,"validBodyRate":1,"p50Ms":887,"p95Ms":1253,"p99Ms":1289,"maxMs":1298,"passed":true}
+{"phase":"activity-list","concurrentUsers":500,"statuses":{"200":500},"httpResponseRate":1,"validBodyRate":1,"p50Ms":233,"p95Ms":441,"p99Ms":455,"maxMs":458,"passed":true}
+{"phase":"duplicate-registration","concurrentUsers":500,"statuses":{"409":500},"httpResponseRate":1,"validBodyRate":1,"p50Ms":451,"p95Ms":825,"p99Ms":865,"maxMs":871,"passed":true}
+{"phase":"personal-annual","concurrentUsers":500,"statuses":{"200":500},"httpResponseRate":1,"validBodyRate":1,"p50Ms":444,"p95Ms":764,"p99Ms":798,"maxMs":805,"passed":true}
+{"phase":"notification-count","concurrentUsers":500,"statuses":{"200":500},"httpResponseRate":1,"validBodyRate":1,"p50Ms":71,"p95Ms":125,"p99Ms":130,"maxMs":131,"passed":true}
+{"phase":"withdrawal","concurrentUsers":500,"statuses":{"200":125,"409":375},"httpResponseRate":1,"validBodyRate":1,"p50Ms":719,"p95Ms":1212,"p99Ms":1278,"maxMs":1294,"passed":true}
+{"phase":"released-capacity","concurrentUsers":500,"statuses":{"200":500},"httpResponseRate":1,"validBodyRate":1,"p50Ms":440,"p95Ms":726,"p99Ms":760,"maxMs":762,"passed":true}
+{"phase":"reregistration","concurrentUsers":500,"statuses":{"200":125,"409":375},"httpResponseRate":1,"validBodyRate":1,"p50Ms":1303,"p95Ms":1936,"p99Ms":1989,"maxMs":2002,"passed":true}
+{"phase":"duplicate-after-reregister","concurrentUsers":500,"statuses":{"409":500},"httpResponseRate":1,"validBodyRate":1,"p50Ms":828,"p95Ms":1483,"p99Ms":1546,"maxMs":1563,"passed":true}
+{"phase":"final-activity-list","concurrentUsers":500,"statuses":{"200":500},"httpResponseRate":1,"validBodyRate":1,"p50Ms":409,"p95Ms":795,"p99Ms":836,"maxMs":847,"passed":true}
+{"type":"summary","passed":true,"cleanup":{"removed":true},"childExit":{"code":0,"signal":null},"users":500,"phaseCount":10,"zeroRetries":true,"result":{"accepted":500,"requests":5000,"historicalCount":125,"activeCount":125,"withdrawnCount":0,"duplicates":0,"integrity":[{"integrity_check":"ok"}],"foreignKeys":[],"notificationRows":875}}

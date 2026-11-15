@@ -1,0 +1,7 @@
+{"node":"v26.12.1","uv":"1.52.1","os":"10.0.26300","backlog":2048,"port":53935,"journal":{"journal_mode":"wal"},"synchronous":{"synchronous":2}}
+{"connectionMode":"cold-burst"}
+{"phase":"capacity-limited-registration","concurrentUsers":500,"statuses":{"200":125,"409":375},"httpResponseRate":1,"p50Ms":383,"p99Ms":420,"p95Ms":417,"maxMs":420}
+{"phase":"activity-list","concurrentUsers":500,"statuses":{"200":500},"httpResponseRate":1,"p50Ms":79,"p99Ms":156,"p95Ms":151,"maxMs":158}
+{"phase":"duplicate-registration","concurrentUsers":500,"statuses":{"409":500},"httpResponseRate":1,"p50Ms":44,"p99Ms":64,"p95Ms":62,"maxMs":65}
+{"phase":"personal-annual","concurrentUsers":500,"statuses":{"200":500},"httpResponseRate":1,"p50Ms":68,"p99Ms":147,"p95Ms":140,"maxMs":148}
+{"result":{"accepted":500,"requests":2000,"count":125,"duplicates":0,"integrity":[{"integrity_check":"ok"}],"foreignKeys":[]},"passed":true}
