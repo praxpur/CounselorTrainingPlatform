@@ -64,7 +64,7 @@ async function prepareAccounts(db) {
 }
 async function startDemo({ directory = demoDirectory, port = 3001, apiFile = path.join(root, 'utils/store.js'), quiet = false } = {}) {
   if (require.cache[require.resolve('../server/server')])
-    throw new Error('演示必须独立启动，请双击「启动演示.cmd」，不能复用已加载的后端进程')
+    throw new Error('演示必须独立启动，请双击「demo.cmd」，不能复用已加载的后端进程')
   ensureDependencies()
   const database = await prepareDirectory(directory)
   Object.assign(process.env, { DB_PATH: database, UPLOAD_DIR: path.join(directory, 'uploads'), NODE_ENV: 'development',

@@ -1,9 +1,10 @@
 @echo off
+setlocal
 chcp 65001 >nul
 cd /d "%~dp0"
-where node >nul 2>nul
+where.exe node >nul 2>nul
 if errorlevel 1 (
-  echo 请先安装 Node.js 22.16 或更高版本。
+  echo Node.js 22.16 or newer is required. Please install Node.js and reopen this window.
   pause
   exit /b 1
 )

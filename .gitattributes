@@ -11,3 +11,5 @@
 assets/fonts/noto-sans-sc.wxss linguist-generated=true
 assets/fonts/coverage.json linguist-generated=true
 assets/fonts/coverage.js linguist-generated=true
+
+*.cmd text eol=crlf

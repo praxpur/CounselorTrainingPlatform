@@ -50,3 +50,20 @@ test('不会复用进程里已加载的后端或改写它的数据库配置', as
   await assert.rejects(startDemo(), /必须独立启动/)
   assert.equal(process.env.DB_PATH, previous)
 })
+
+test('Windows CMD入口使用CRLF，在含空格和中文的路径下可启动Node', { skip: process.platform !== 'win32' }, async () => {
+  const source=path.resolve(__dirname,'../demo.cmd'),contents=await fs.readFile(source,'ascii')
+  assert.equal(contents.replaceAll('\r\n','').includes('\n'),false)
+  const directory=await fs.mkdtemp(path.join(temporary,'cmd launcher test-'))
+  try{
+    await fs.mkdir(path.join(directory,'scripts'))
+    await fs.copyFile(source,path.join(directory,'demo.cmd'))
+    await fs.writeFile(path.join(directory,'scripts/start-demo.js'),"console.log('DEMO_LAUNCHER_OK')\n")
+    const execute=require('node:util').promisify(require('node:child_process').execFile)
+    const result=await execute('cmd.exe',['/d','/c',path.join(directory,'demo.cmd')],{timeout:15000,encoding:'utf8'})
+    assert.match(result.stdout,/DEMO_LAUNCHER_OK/)
+  }finally{
+    assert.ok(path.relative(temporary,directory).startsWith('cmd launcher test-'))
+    await fs.rm(directory,{recursive:true,force:true})
+  }
+})
