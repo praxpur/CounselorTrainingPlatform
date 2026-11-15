@@ -11,6 +11,7 @@
         bindretry="onShow"
       ></status-panel>
       <block wx:if="{{!loading && user && user.role === 'admin'}}">
+        <notification-entry></notification-entry>
         <navigator url="/pages/password/password" class="card">修改密码 ›</navigator>
         <school-brand title="管理工作台"></school-brand>
         <view class="campus-hero admin-campus">
@@ -103,6 +104,7 @@
         <view class="school-footer">济南大学学生工作处</view>
       </block>
       <block wx:elif="{{!loading && user}}">
+        <notification-entry></notification-entry>
         <school-brand></school-brand>
         <view class="campus-hero home-campus">
           <image

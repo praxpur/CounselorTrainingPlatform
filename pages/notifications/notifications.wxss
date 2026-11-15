@@ -1,0 +1,5 @@
+.actions { display: flex; gap: 16rpx; margin: 20rpx 0; }
+.actions button { margin: 0; }
+.notice-body { margin: 16rpx 0; white-space: pre-wrap; word-break: break-all; }
+.unread { border-left: 6rpx solid #25489c; }
+.unread-dot { color: #25489c; font-size: 20rpx; }

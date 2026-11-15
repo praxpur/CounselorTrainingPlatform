@@ -24,7 +24,8 @@
     "pages/attendance-manage/attendance-manage",
     "pages/self-training/self-training",
     "pages/audit/audit",
-    "pages/activity-manage/activity-manage"
+    "pages/activity-manage/activity-manage",
+    "pages/notifications/notifications"
   ],
   "window": {
     "navigationBarTextStyle": "black",
@@ -63,7 +64,8 @@
   },
   "style": "v2",
   "usingComponents": {
-    "status-panel": "/components/status-panel/status-panel"
+    "status-panel": "/components/status-panel/status-panel",
+    "notification-entry": "/components/notification-entry/notification-entry"
   },
   "renderer": "webview",
   "sitemapLocation": "sitemap.json",

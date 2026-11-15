@@ -25,6 +25,8 @@ function createAudit(db) {
     ['proof_files', ['user_id','name','mime_type','bytes','external_id','experience_id'], row => row + '.id'],
     ['attendance_sessions', ['activity_id','phase','method','opens_at','closes_at','latitude','longitude','radius','created_by'], row => row + ".activity_id || ':' || " + row + '.phase'],
     ['attendance_records', ['activity_id','user_id','phase','method','recorded_at','distance','accuracy'], row => row + ".activity_id || ':' || " + row + ".user_id || ':' || " + row + '.phase'],
+    ['notification_events',['kind','target','created_at'],row=>row+'.id'],
+    ['notifications',['user_id','event_id','kind','title','body','target_type','target_id','created_at','read_at'],row=>row+'.id'],
   ]
   // 刷新触发器必须在单个写事务内，其他进程不能遇到无审计的空窗。
   db.exec('BEGIN IMMEDIATE')
@@ -60,7 +62,7 @@ function createAudit(db) {
     if (path === '/api/admin/audit-logs') return { action: 'audit.read', target: 'audit-logs' }
     if (/^\/api\/proofs\/[a-f0-9]{48}$/.test(path)) return { action: 'proof.download', target: path.split('/').pop() }
     if (req.method !== 'GET' && path.startsWith('/api/')) {
-      const known = /^\/api\/(?:(?:admin\/)?(?:activities|users|experiences)(?:\/[a-zA-Z0-9_-]{1,40})?(?:\/(?:register|cancel|confirm|review|password|attendance)(?:\/(?:in|out))?)?|my\/external-trainings(?:\/\d+)?|admin\/external-trainings\/\d+\/review|proofs|logout)$/.test(path)
+      const known = /^\/api\/(?:(?:admin\/)?(?:activities|users|experiences)(?:\/[a-zA-Z0-9_-]{1,40})?(?:\/(?:register|cancel|confirm|review|password|attendance)(?:\/(?:in|out))?)?|my\/external-trainings(?:\/\d+)?|admin\/external-trainings\/\d+\/review|notifications\/(?:read-all|[1-9]\d*\/read)|proofs|logout)$/.test(path)
       return { action: 'request.write', target: known ? path : 'unknown-endpoint' }
     }
     return null

@@ -8,6 +8,7 @@ const { importRoster, resetPassword } = require('./roster')
 const { createAttendance } = require('./attendance')
 const { createEvidence, proofList } = require('./evidence')
 const { createAudit } = require('./audit')
+const { createNotifications } = require('./notifications')
 const { pageQuery, mapPage, boundedRows } = require('./pagination')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
@@ -96,6 +97,7 @@ const hash = (value) => crypto.createHash('sha256').update(value).digest('hex')
 const authentication = createAuthentication(db)
 const attendance = createAttendance(db)
 const evidence = createEvidence(db)
+const notifications = createNotifications(db)
 const audit = createAudit(db)
 const registration = createRegistration(db)
 function body(req) {
@@ -385,6 +387,17 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     if (path === '/api/admin/audit-logs' && method === 'GET') {
       admin(u)
       return send(res, 200, audit.list(url))
+    }
+    if(path==='/api/notifications'&&method==='GET')return send(res,200,notifications.list(u,url))
+    if(path==='/api/notifications/unread-count'&&method==='GET')return send(res,200,{unreadCount:notifications.unreadCount(u)})
+    if(path==='/api/notifications/read-all'&&method==='POST'){
+      await body(req)
+      return send(res,200,notifications.readAll(requireUser(req)))
+    }
+    const notificationMatch=path.match(/^\/api\/notifications\/([1-9]\d*)\/read$/)
+    if(notificationMatch&&method==='POST'){
+      await body(req)
+      return send(res,200,notifications.read(requireUser(req),notificationMatch[1]))
     }
     if (path === '/api/proofs' && method === 'POST')
       return send(res, 201, await evidence.upload(req, u, () => requireUser(req)))

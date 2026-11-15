@@ -8,6 +8,7 @@
         bindretry="onShow"
       ></status-panel>
       <school-brand></school-brand>
+      <notification-entry wx:if="{{!loading && !errorMessage && user.name}}"></notification-entry>
       <view class="card" wx:if="{{!loading && !errorMessage && user.name}}">
         <view class="heading">{{user.name}}</view>
         <view class="line">{{user.department}}</view>

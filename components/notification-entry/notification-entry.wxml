@@ -1,0 +1,4 @@
+<navigator class="card notification-entry" url="/pages/notifications/notifications" aria-label="消息中心，未读 {{unreadCount}} 条">
+  <view class="entry-title">消息中心 <text class="badge" wx:if="{{unreadCount > 0}}">{{unreadCount > 99 ? '99+' : unreadCount}}</text></view>
+  <view class="muted">{{available ? '查看活动动态与审核结果' : '消息暂不可用，点击查看或刷新'}}</view>
+</navigator>

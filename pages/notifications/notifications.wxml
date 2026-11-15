@@ -1,0 +1,26 @@
+<view class="page-shell">
+  <navigation-bar title="消息中心" back="{{true}}"></navigation-bar>
+  <scroll-view scroll-y class="screen">
+    <view class="container">
+      <view class="row">
+        <view class="title">未读 {{unreadCount}} 条</view>
+        <button class="button-mini" size="mini" bindtap="readAll" disabled="{{busy || loading || !unreadCount}}">全部已读</button>
+      </view>
+      <view class="actions">
+        <button class="button-mini" size="mini" bindtap="toggleUnread" disabled="{{busy || loading}}">{{unreadOnly ? '查看全部' : '只看未读'}}</button>
+        <button class="button-mini" size="mini" bindtap="load" disabled="{{busy || loading}}">刷新</button>
+      </view>
+      <view class="muted" wx:if="{{hasNewer}}">有新消息，请点击刷新查看。</view>
+      <status-panel loading="{{loading}}" error-message="{{errorMessage}}" bindretry="load"></status-panel>
+      <view class="card notice {{!item.readAt ? 'unread' : ''}}" wx:for="{{rows}}" wx:key="id" data-id="{{item.id}}" bindtap="open">
+        <view class="title"><text class="unread-dot" wx:if="{{!item.readAt}}">● </text>{{item.title}}</view>
+        <view class="notice-body">{{item.body}}</view>
+        <view class="muted">{{item.timeText}} · {{item.readAt ? '已读' : '未读'}}</view>
+      </view>
+      <view class="muted" wx:if="{{windowed}}">当前显示第 {{displayFrom}}—{{displayTo}} 条，可返回上一页。</view>
+      <button wx:if="{{previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{busy || loading}}">上一页</button>
+      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{busy || loading}}">加载更多消息</button>
+      <view class="empty" wx:if="{{!loading && !errorMessage && !rows.length}}">{{unreadOnly ? '暂无未读消息' : '暂无消息'}}</view>
+    </view>
+  </scroll-view>
+</view>
