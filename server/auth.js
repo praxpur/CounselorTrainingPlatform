@@ -61,10 +61,12 @@ function createAuthentication(db) {
     mustChange: id => Boolean(credential(id)?.must_change),
     async login(input, ip) {
       const id = typeof input.id === 'string' ? input.id.trim() : ''
-      limit('ip', ip, 3000)
-      limit('account', id, 10)
       if (!/^[a-zA-Z0-9_-]{1,40}$/.test(id) || !validPassword(input.password))
         fail(401, '工号或密码错误，或账号已停用')
+      // 不把同一校园出口/代理下的所有账号放进一个可耗尽的应用窗口。
+      // 来源总请求速率由边缘代理限制；应用保留账号猜测保护和哈希并发上限。
+      limit('source-account', ip + ':' + id, 10)
+      limit('account', id, 10)
       const stored = credential(id)
       const valid = await verifyPassword(input.password, stored?.password_hash)
       if (!valid || !stored?.enabled) fail(401, '工号或密码错误，或账号已停用')
@@ -83,7 +85,7 @@ function createAuthentication(db) {
       }
     },
     async changePassword(user, input, ip, revalidate) {
-      limit('password-ip', ip, 3000)
+      limit('password-source-account', ip + ':' + user.id, 10)
       limit('password-account', user.id, 10)
       const stored = credential(user.id)
       if (!stored || !validPassword(input.oldPassword) || !await verifyPassword(input.oldPassword, stored.password_hash))

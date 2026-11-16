@@ -1,4 +1,5 @@
 const http = require('node:http')
+const { clientIp } = require('./client-ip')
 const { sendWorkbook, assertExportAvailable } = require('./exports')
 const { personalRecords, personalAnnual } = require('./personal')
 const { createAuthentication } = require('./auth')
@@ -277,12 +278,12 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     if (path === '/api/auth/login' && method === 'POST') {
       const input = await body(req)
       if (typeof input.id === 'string' && /^[a-zA-Z0-9_-]{1,40}$/.test(input.id.trim())) req.auditAccount = input.id.trim()
-      return send(res, 200, await authentication.login(input, req.socket.remoteAddress))
+      return send(res, 200, await authentication.login(input, clientIp(req)))
     }
     if (path === '/api/auth/password' && method === 'POST') {
       const user = requireUser(req)
       const input = await body(req)
-      const result = await authentication.changePassword(user, input, req.socket.remoteAddress, () => requireUser(req))
+      const result = await authentication.changePassword(user, input, clientIp(req), () => requireUser(req))
       return send(res, 200, result)
     }
     // This is deliberately disabled in production. Replace with a verified school identity exchange.

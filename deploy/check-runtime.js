@@ -27,6 +27,7 @@ function validateProduction(environment = process.env, runtime = process.version
   if (major < 22 || (major === 22 && minor < 16) || typeof sqlite.backup !== 'function') throw new Error('需要支持 node:sqlite backup 的 Node.js 22.16.0 或更高版本')
   if (environment.NODE_ENV !== 'production') throw new Error('正式服务必须设置 NODE_ENV=production')
   if (environment.ENABLE_DEV_LOGIN && environment.ENABLE_DEV_LOGIN !== '0') throw new Error('正式服务不得启用 ENABLE_DEV_LOGIN')
+  if (environment.TRUST_PROXY && !['none','loopback'].includes(environment.TRUST_PROXY)) throw new Error('TRUST_PROXY 仅允许 none 或 loopback')
   if ((environment.HOST || '127.0.0.1') !== '127.0.0.1') throw new Error('正式模板仅允许后端监听 127.0.0.1，由 Nginx 提供 HTTPS')
   const port = Number(environment.PORT || 3000)
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT 无效')

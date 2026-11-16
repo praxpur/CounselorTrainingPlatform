@@ -68,7 +68,7 @@ async function startDemo({ directory = demoDirectory, port = 3001, apiFile = pat
   ensureDependencies()
   const database = await prepareDirectory(directory)
   Object.assign(process.env, { DB_PATH: database, UPLOAD_DIR: path.join(directory, 'uploads'), NODE_ENV: 'development',
-    ENABLE_DEV_LOGIN: '0', HOST: '127.0.0.1', PORT: String(port) })
+    ENABLE_DEV_LOGIN: '0', TRUST_PROXY: 'none', HOST: '127.0.0.1', PORT: String(port) })
   const { server, db } = require('../server/server')
   const close = async () => {
     server.closeAllConnections()
