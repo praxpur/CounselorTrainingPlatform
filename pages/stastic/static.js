@@ -25,9 +25,13 @@ Page({
     const year=Number(options.year)
     if(Number.isInteger(year)&&year>=2000&&year<=2100)this.setData({year,yearIndex:year-2000})
   },
-  onShow() { if (!this.data.exporting) return this.load() },
-  onHide() { this.invalidate(); this.setData({ loading: false, canExport: false }) },
-  onUnload() { this.invalidate() },
+  onShow() {
+    this.visible=true
+    this.needsRefresh=true
+    if (!this.data.exporting) return this.load()
+  },
+  onHide() { this.visible=false; this.needsRefresh=true; this.invalidate(); this.setData({ loading: false, canExport: false }) },
+  onUnload() { this.visible=false; this.needsRefresh=false; this.invalidate() },
   invalidate() {
     this.requestId = (this.requestId || 0) + 1
     this.loadedSignature = null
@@ -43,6 +47,8 @@ Page({
       : params + '&q=' + encodeURIComponent(this.data.appliedQuery)
   },
   async load() {
+    if(this.visible===false || this.data.exporting)return
+    this.needsRefresh=false
     if (!api.guard()) return
     const epoch = this.invalidate()
     this.setData({ loading: true, errorMessage: '', canExport: false, authorized: false })
@@ -60,7 +66,7 @@ Page({
     }
   },
   async fetchRows(append = false, pageOffset = 0) {
-    if (!this.data.authorized || !api.guard() || this.data.exporting || this.data.dirty) return
+    if (this.visible===false || !this.data.authorized || !api.guard() || this.data.exporting || this.data.dirty) return
     if (append && (this.data.loading || !this.data.hasMore)) return
     const offset = append ? this.data.nextOffset : pageOffset
     const signature = this.signature(), epoch = this.invalidate()
@@ -142,6 +148,9 @@ Page({
     try {
       await api.exportExcel('/api/admin/exports/statistics?' + this.parameters(), this.data.year + '-数据统计与排名-' + this.data.dimensionLabel + (this.data.selected ? '-明细' : '') + '.xlsx')
     } catch (error) { api.error(error) }
-    finally { this.setData({ exporting: false }) }
+    finally {
+      this.setData({ exporting: false })
+      if(this.visible && this.needsRefresh) await this.load()
+    }
   },
 })
