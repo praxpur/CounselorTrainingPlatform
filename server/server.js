@@ -124,6 +124,23 @@ function requireUser(req) {
 function admin(user) {
   if (user.role !== 'admin') fail(403, '无管理员权限')
 }
+// Mutations must authorize after acquiring the database write lock: another process
+// may revoke a session while BEGIN IMMEDIATE is waiting.
+function authorizeMutation(req, administrator = false) {
+  const user = requireUser(req)
+  if (administrator) admin(user)
+  if (!['/api/me', '/api/logout'].includes(new URL(req.url, 'http://localhost').pathname) && authentication.mustChange(user.id))
+    fail(403, '请先修改初始密码')
+  return user
+}
+function write(req, administrator, action) {
+  db.exec('BEGIN IMMEDIATE')
+  try {
+    const result = action(authorizeMutation(req, administrator))
+    db.exec('COMMIT')
+    return result
+  } catch (error) { db.exec('ROLLBACK'); throw error }
+}
 function activityTime(value) {
   if (
     typeof value !== 'string' ||
@@ -298,26 +315,31 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       if (!/^[a-zA-Z0-9_-]{1,40}$/.test(id) || !name || name.length > 50 || department.length > 100)
         fail(400, '请填写有效的测试工号和姓名')
       const role = id === process.env.DEV_ADMIN_ID ? 'admin' : 'counselor'
-      const existing = get('SELECT * FROM users WHERE id=?', id)
-      if (existing && !existing.enabled) fail(403, '该用户已停用')
-      if (existing && existing.name !== name) fail(403, '工号与姓名不匹配，请核对后重试')
-      if ((!existing || !existing.department) && !department) {
-        return send(res, 422, { error: '首次登录，请补充学院或部门', code: 'DEPARTMENT_REQUIRED' })
-      }
-      if (!existing)
-        run(
-          'INSERT INTO users(id,name,department,role) VALUES(?,?,?,?)',
-          id,
-          name,
-          department,
-          role,
-        )
-      else if (!existing.department) run('UPDATE users SET department=? WHERE id=?', department, id)
-      const token = crypto.randomBytes(32).toString('hex')
-      run('DELETE FROM sessions WHERE expires<=?', Date.now())
-      run('INSERT INTO sessions VALUES(?,?,?)', hash(token), id, Date.now() + 8 * 3600000)
-      const user = get('SELECT id,name,department,role FROM users WHERE id=?', id)
-      return send(res, 200, { token, user })
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        const existing = get('SELECT * FROM users WHERE id=?', id)
+        if (existing && !existing.enabled) fail(403, '该用户已停用')
+        if (existing && existing.name !== name) fail(403, '工号与姓名不匹配，请核对后重试')
+        if ((!existing || !existing.department) && !department) {
+          db.exec('COMMIT')
+          return send(res, 422, { error: '首次登录，请补充学院或部门', code: 'DEPARTMENT_REQUIRED' })
+        }
+        if (!existing)
+          run(
+            'INSERT INTO users(id,name,department,role) VALUES(?,?,?,?)',
+            id,
+            name,
+            department,
+            role,
+          )
+        else if (!existing.department) run('UPDATE users SET department=? WHERE id=?', department, id)
+        const token = crypto.randomBytes(32).toString('hex')
+        run('DELETE FROM sessions WHERE expires<=?', Date.now())
+        run('INSERT INTO sessions VALUES(?,?,?)', hash(token), id, Date.now() + 8 * 3600000)
+        const user = get('SELECT id,name,department,role FROM users WHERE id=?', id)
+        db.exec('COMMIT')
+        return send(res, 200, { token, user })
+      } catch (error) { db.exec('ROLLBACK'); throw error }
     }
     if (path.startsWith('/api/auth/')) fail(404, '接口不存在')
     const u = requireUser(req)
@@ -348,18 +370,18 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     if(path==='/api/notifications/unread-count'&&method==='GET')return send(res,200,{unreadCount:notifications.unreadCount(u)})
     if(path==='/api/notifications/read-all'&&method==='POST'){
       await body(req)
-      return send(res,200,notifications.readAll(requireUser(req)))
+      return send(res,200,write(req, false, user => notifications.readAll(user)))
     }
     const notificationMatch=path.match(/^\/api\/notifications\/([1-9]\d*)\/read$/)
     if(notificationMatch&&method==='POST'){
       await body(req)
-      return send(res,200,notifications.read(requireUser(req),notificationMatch[1]))
+      return send(res,200,write(req, false, user => notifications.read(user,notificationMatch[1])))
     }
     if (path === '/api/proofs' && method === 'POST')
-      return send(res, 201, await evidence.upload(req, u, () => requireUser(req)))
+      return send(res, 201, await evidence.upload(req, u, () => authorizeMutation(req)))
     const proofMatch = path.match(/^\/api\/proofs\/([a-f0-9]{48})$/)
     if (proofMatch && method === 'GET') {
-      const file = await evidence.download(proofMatch[1], u, () => requireUser(req))
+      const file = await evidence.download(proofMatch[1], u, () => authorizeMutation(req))
       res.once('finish',file.release)
       res.once('close',file.release)
       if(res.destroyed){file.release();return}
@@ -374,7 +396,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       if (id !== null && (!Number.isSafeInteger(id) || id <= 0)) fail(400, '记录编号无效')
       if (method === 'GET' && id) return send(res, 200, evidence.getExternal(id, u))
       if ((method === 'POST' && !id) || (method === 'PUT' && id))
-        return send(res, method === 'POST' ? 201 : 200, evidence.submitExternal(id, await body(req), u))
+        return send(res, method === 'POST' ? 201 : 200, evidence.submitExternal(id, await body(req), u, () => authorizeMutation(req)))
       fail(404, '接口不存在')
     }
     if (path === '/api/admin/external-trainings' && method === 'GET') {
@@ -388,7 +410,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     const externalReviewMatch = path.match(/^\/api\/admin\/external-trainings\/(\d+)\/review$/)
     if (externalReviewMatch && method === 'POST') {
       admin(u)
-      return send(res, 200, evidence.review(Number(externalReviewMatch[1]), await body(req), u))
+      return send(res, 200, evidence.review(Number(externalReviewMatch[1]), await body(req), u, () => authorizeMutation(req, true)))
     }
     const attendanceMatch = path.match(/^\/api\/(admin\/)?activities\/(\d+)\/attendance(?:\/(in|out))?$/)
     if (attendanceMatch) {
@@ -399,12 +421,12 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
         if (method === 'GET' && !phase) return send(res, 200, attendance.report(id,url))
         if (method === 'POST' && phase) {
           const input = await body(req)
-          return send(res, 200, await attendance.open(id, phase, input, u, () => admin(requireUser(req))))
+          return send(res, 200, await attendance.open(id, phase, input, u, () => authorizeMutation(req, true)))
         }
-        if (method === 'DELETE' && phase) return send(res, 200, attendance.close(id, phase))
+        if (method === 'DELETE' && phase) return send(res, 200, attendance.close(id, phase, () => authorizeMutation(req, true)))
       } else {
         if (method === 'GET' && !phase) return send(res, 200, attendance.state(id, u))
-        if (method === 'POST' && phase) return send(res, 200, attendance.record(id, phase, await body(req), u))
+        if (method === 'POST' && phase) return send(res, 200, attendance.record(id, phase, await body(req), u, () => authorizeMutation(req)))
       }
       fail(404, '接口不存在')
     }
@@ -466,7 +488,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     }
     if (path === '/api/me' && method === 'GET') return send(res, 200, u)
     if (path === '/api/logout' && method === 'POST') {
-      run('DELETE FROM sessions WHERE token_hash=?', hash(req.headers.authorization.slice(7)))
+      write(req, false, () => run('DELETE FROM sessions WHERE token_hash=?', hash(req.headers.authorization.slice(7))))
       return send(res, 200, { ok: true })
     }
     if (path === '/api/admin/users' && method === 'GET') {
@@ -479,7 +501,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       admin(u)
       const b = await body(req)
       if (b.initialPassword !== undefined || process.env.NODE_ENV === 'production') {
-        await importRoster(db, [{ ...b, role: 'counselor' }], { authorize: () => admin(requireUser(req)) })
+        await importRoster(db, [{ ...b, role: 'counselor' }], { authorize: () => authorizeMutation(req, true) })
         return send(res, 201, { id: b.id, name: b.name, department: b.department, enabled: 1 })
       }
       const id = String(b.id || '').trim(),
@@ -493,26 +515,28 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
         department.length > 100
       )
         fail(400, '请填写有效工号、姓名和部门')
-      if (id === process.env.DEV_ADMIN_ID || get('SELECT id FROM users WHERE id=?', id))
-        fail(409, '该工号已存在或已保留')
-      run(
-        "INSERT INTO users(id,name,department,role) VALUES(?,?,?,'counselor')",
-        id,
-        name,
-        department,
-      )
+      write(req, true, () => {
+        if (id === process.env.DEV_ADMIN_ID || get('SELECT id FROM users WHERE id=?', id))
+          fail(409, '该工号已存在或已保留')
+        run(
+          "INSERT INTO users(id,name,department,role) VALUES(?,?,?,'counselor')",
+          id,
+          name,
+          department,
+        )
+      })
       return send(res, 201, { id, name, department, enabled: 1 })
     }
     if (path === '/api/admin/users/import' && method === 'POST') {
       admin(u)
       const b = await body(req)
       if (!Array.isArray(b.rows) || b.rows.length > 50) fail(400, '每批最多导入 50 人')
-      return send(res, 201, await importRoster(db, b.rows, { authorize: () => admin(requireUser(req)) }))
+      return send(res, 201, await importRoster(db, b.rows, { authorize: () => authorizeMutation(req, true) }))
     }
     const resetMatch = path.match(/^\/api\/admin\/users\/([a-zA-Z0-9_-]{1,40})\/password$/)
     if (resetMatch && method === 'POST') {
       const authorize = () => {
-        admin(requireUser(req))
+        authorizeMutation(req, true)
         if (!get("SELECT id FROM users WHERE id=? AND role='counselor'", resetMatch[1])) fail(404, '辅导员不存在')
       }
       authorize()
@@ -534,18 +558,21 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
         (b.enabled !== undefined && ![0, 1].includes(b.enabled))
       )
         fail(400, '请填写有效姓名、部门和状态')
-      const existing = get("SELECT id,enabled FROM users WHERE id=? AND role='counselor'", id)
-      if (!existing) fail(404, '辅导员不存在')
-      const enabled = b.enabled === undefined ? existing.enabled : b.enabled
-      run(
-        'UPDATE users SET name=?,department=?,enabled=? WHERE id=?',
-        name,
-        department,
-        enabled,
-        id,
-      )
-      if (!enabled) run('DELETE FROM sessions WHERE user_id=?', id)
-      return send(res, 200, { id, name, department, enabled })
+      const result = write(req, true, () => {
+        const existing = get("SELECT id,enabled FROM users WHERE id=? AND role='counselor'", id)
+        if (!existing) fail(404, '辅导员不存在')
+        const enabled = b.enabled === undefined ? existing.enabled : b.enabled
+        run(
+          'UPDATE users SET name=?,department=?,enabled=? WHERE id=?',
+          name,
+          department,
+          enabled,
+          id,
+        )
+        if (!enabled) run('DELETE FROM sessions WHERE user_id=?', id)
+        return { id, name, department, enabled }
+      })
+      return send(res, 200, result)
     }
     if (path === '/api/experiences' && method === 'GET')
       return send(res,200,pageQuery(db,'SELECT id,activity_id activityId,title,description,status,credit_hours creditHours,review_note reviewNote FROM experiences WHERE user_id=? AND activity_id IS NOT NULL ORDER BY created_at DESC,id DESC',[u.id],url))
@@ -567,7 +594,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
         )
       )
         fail(409, '该活动已有待审核或已通过的经历')
-      return send(res, 201, evidence.createExperience(a, u, description, b.proofIds))
+      return send(res, 201, evidence.createExperience(a, u, description, b.proofIds, () => authorizeMutation(req)))
     }
     if (path === '/api/admin/experiences' && method === 'GET') {
       admin(u)
@@ -591,6 +618,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
         fail(400, '请填写有效的审核结果或驳回原因')
       db.exec('BEGIN IMMEDIATE')
       try {
+        authorizeMutation(req, true)
         const exp = get('SELECT * FROM experiences WHERE id=? AND activity_id IS NOT NULL', Number(reviewMatch[1]))
         if (!exp || exp.status !== 'pending') fail(409, '记录不存在或已审核')
         const a = activity(exp.activity_id, { id: exp.user_id })
@@ -787,12 +815,14 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     if (path === '/api/admin/activities' && method === 'POST') {
       admin(u)
       const v = activityInput(await body(req))
-      const r = run(
-        'INSERT INTO activities(title,description,location,starts_at,ends_at,capacity,credit_hours,created_at) VALUES(?,?,?,?,?,?,?,?)',
-        ...v,
-        Date.now(),
-      )
-      return send(res, 201, dto(activity(Number(r.lastInsertRowid), u)))
+      const result = write(req, true, actor => {
+        const r = run(
+          'INSERT INTO activities(title,description,location,starts_at,ends_at,capacity,credit_hours,created_at) VALUES(?,?,?,?,?,?,?,?)',
+          ...v, Date.now(),
+        )
+        return dto(activity(Number(r.lastInsertRowid), actor))
+      })
+      return send(res, 201, result)
     }
     let m = path.match(/^\/api\/activities\/(\d+)$/)
     if (m && method === 'GET') {
@@ -803,37 +833,50 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     m = path.match(/^\/api\/activities\/(\d+)\/register$/)
     if (m && method === 'POST') {
       const id=Number(m[1])
-      registration.register(id,u.id,()=>requireUser(req))
+      registration.register(id,u.id,()=>authorizeMutation(req))
       return send(res,200,dto(activity(id,u)))
     }
     if (m && method === 'DELETE') {
       const id=Number(m[1])
-      registration.cancel(id,u.id,()=>requireUser(req))
+      registration.cancel(id,u.id,()=>authorizeMutation(req))
       return send(res,200,dto(activity(id,u)))
     }
     m = path.match(/^\/api\/admin\/activities\/(\d+)$/)
     if (m && method === 'PUT') {
       admin(u)
       const input = await body(req)
-      const id = Number(m[1]),
-        a = activity(id, u),
-        v = activityInput(input)
-      if (a.status !== 'published') fail(409, '已取消的活动不能修改')
-      if (v[5] > 0 && v[5] < a.registered_count) fail(409, '人数上限不能少于已报名人数')
-      if (
-        get(
-          'SELECT 1 AS found FROM registrations WHERE activity_id=? AND confirmed_at IS NOT NULL LIMIT 1',
+      const id = Number(m[1]), v = activityInput(input)
+      const result = write(req, true, actor => {
+        const a = activity(id, actor)
+        if (a.status !== 'published') fail(409, '已取消的活动不能修改')
+        if (v[5] > 0 && v[5] < a.registered_count) fail(409, '人数上限不能少于已报名人数')
+        if (
+          get(
+            'SELECT 1 AS found FROM registrations WHERE activity_id=? AND confirmed_at IS NOT NULL LIMIT 1',
+            id,
+          ) &&
+          (v[6] !== a.credit_hours || v[3] !== a.starts_at)
+        )
+          fail(409, '已有参加确认，不能更改开始时间或学时')
+        if (v[3] !== a.starts_at && get('SELECT 1 FROM attendance_records WHERE activity_id=? LIMIT 1', id))
+          fail(409, '已有签到记录，不能更改开始时间')
+        if (v[0] !== a.title || v[3] !== a.starts_at) {
+          const date = new Date(v[3] + 8 * 3600000).toISOString().slice(0, 10)
+          if (get(`SELECT 1 FROM registrations r JOIN external_trainings e ON e.user_id=r.user_id
+            WHERE r.activity_id=? AND r.confirmed_at IS NOT NULL AND r.cancelled_at IS NULL
+              AND e.title=? AND e.occurred_on=? AND e.status='approved' LIMIT 1`, id, v[0], date))
+            fail(409, '修改后与已通过的自行提交活动重复，不能重复认定学时')
+        }
+        if (v[3] !== a.starts_at || v[4] !== a.ends_at || v[2] !== a.location)
+          run('UPDATE attendance_sessions SET closes_at=MIN(closes_at,?) WHERE activity_id=?', Date.now(), id)
+        run(
+          'UPDATE activities SET title=?,description=?,location=?,starts_at=?,ends_at=?,capacity=?,credit_hours=? WHERE id=?',
+          ...v,
           id,
-        ) &&
-        (v[6] !== a.credit_hours || v[3] !== a.starts_at)
-      )
-        fail(409, '已有参加确认，不能更改开始时间或学时')
-      run(
-        'UPDATE activities SET title=?,description=?,location=?,starts_at=?,ends_at=?,capacity=?,credit_hours=? WHERE id=?',
-        ...v,
-        id,
-      )
-      return send(res, 200, dto(activity(id, u)))
+        )
+        return dto(activity(id, actor))
+      })
+      return send(res, 200, result)
     }
     if (m && method === 'DELETE') {
       admin(u)
@@ -841,6 +884,8 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
       activity(id, u)
       db.exec('BEGIN IMMEDIATE')
       try {
+        authorizeMutation(req, true)
+        activity(id, u)
         run("UPDATE activities SET status='cancelled' WHERE id=?", id)
         run(
           "UPDATE experiences SET status='rejected',credit_hours=0,review_note='活动已取消',reviewed_by=?,reviewed_at=? WHERE activity_id=? AND status='pending'",
@@ -872,11 +917,12 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     if (m && method === 'POST') {
       admin(u)
       const id = Number(m[1]),
-        b = await body(req),
-        a = activity(id, u)
-      if (a.status !== 'published' || a.starts_at > Date.now()) fail(409, '活动已取消或尚未开始')
+        b = await body(req)
       db.exec('BEGIN IMMEDIATE')
       try {
+        authorizeMutation(req, true)
+        const a = activity(id, u)
+        if (a.status !== 'published' || a.starts_at > Date.now()) fail(409, '活动已取消或尚未开始')
         evidence.preventDuplicateCredit(a, String(b.userId || ''))
         const result = run(
           'UPDATE registrations SET confirmed_at=?,confirmed_by=?,credited_hours=? WHERE activity_id=? AND user_id=? AND confirmed_at IS NULL AND cancelled_at IS NULL',

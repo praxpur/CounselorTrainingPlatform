@@ -146,9 +146,13 @@ function createEvidence(db) {
         await fs.mkdir(root, { recursive: true })
         await fs.writeFile(filePath, buffer, { flag: 'wx', mode: 0o600 })
         written = true
-        if (authorize().role !== 'counselor') fail(403, '账号角色已改变')
-        quota(user.id, buffer.length)
-        db.prepare('INSERT INTO proof_files(id,user_id,name,mime_type,bytes,created_at) VALUES(?,?,?,?,?,?)').run(id, user.id, name, mimeType, buffer.length, Date.now())
+        db.exec('BEGIN IMMEDIATE')
+        try {
+          if (authorize().role !== 'counselor') fail(403, '账号角色已改变')
+          quota(user.id, buffer.length)
+          db.prepare('INSERT INTO proof_files(id,user_id,name,mime_type,bytes,created_at) VALUES(?,?,?,?,?,?)').run(id, user.id, name, mimeType, buffer.length, Date.now())
+          db.exec('COMMIT')
+        } catch (error) { db.exec('ROLLBACK'); throw error }
         return { id, name, mimeType, size: buffer.length }
       } catch (error) {
         if (written) await fs.unlink(filePath).catch(() => {})
@@ -181,12 +185,14 @@ function createEvidence(db) {
         requestedHours: record.requested_hours, description: record.description, status: record.status,
         creditHours: record.credited_hours, reviewNote: record.review_note, proofs: proofList(db, 'external_id', id) }
     },
-    submitExternal(id, input, user) {
+    submitExternal(id, input, user, authorize = () => user) {
       if (user.role !== 'counselor') fail(403, '仅辅导员可提交培训活动')
       const form = externalInput(input)
-      if (platformDuplicate(form.title, form.occurredOn, user.id)) fail(409, '该活动已在平台报名，请从活动记录提交经历')
       db.exec('BEGIN IMMEDIATE')
       try {
+        user = authorize() || user
+        if (user.role !== 'counselor') fail(403, '仅辅导员可提交培训活动')
+        if (platformDuplicate(form.title, form.occurredOn, user.id)) fail(409, '该活动已在平台报名，请从活动记录提交经历')
         if (id && ownExternal(id, user).status !== 'rejected') fail(409, '只有被驳回的活动可修改后重新提交')
         validateProofs(input.proofIds, user, id)
         const duplicate = db.prepare('SELECT id FROM external_trainings WHERE user_id=? AND title=? AND occurred_on=? AND id<>?').get(user.id, form.title, form.occurredOn, id || 0)
@@ -202,9 +208,14 @@ function createEvidence(db) {
         return { id, status: 'pending' }
       } catch (error) { db.exec('ROLLBACK'); throw error }
     },
-    createExperience(event, user, description, proofIds = []) {
+    createExperience(event, user, description, proofIds = [], authorize = () => user) {
       db.exec('BEGIN IMMEDIATE')
       try {
+        user = authorize() || user
+        event = db.prepare('SELECT * FROM activities WHERE id=?').get(event.id)
+        if (!event || event.status !== 'published' || !db.prepare('SELECT 1 FROM registrations WHERE activity_id=? AND user_id=? AND cancelled_at IS NULL').get(event.id,user.id)) fail(409, '只能提交已报名且未取消活动的培训经历')
+        if (event.starts_at > Date.now()) fail(409, '活动尚未开始，请参加后再提交培训经历')
+        if (db.prepare("SELECT 1 FROM experiences WHERE user_id=? AND activity_id=? AND status IN ('pending','approved')").get(user.id,event.id)) fail(409, '该活动已有待审核或已通过的经历')
         validateProofs(proofIds, user, null, false, event.id)
         const date = new Date(event.starts_at + 8 * 3600000).toISOString().slice(0,10)
         const result = db.prepare('INSERT INTO experiences(user_id,activity_id,title,organizer,occurred_on,description,created_at) VALUES(?,?,?,?,?,?,?)').run(user.id, event.id, event.title, '平台活动', date, description, Date.now())
@@ -220,16 +231,21 @@ function createEvidence(db) {
       const result = pageQuery(db,'SELECT e.id,e.title,e.organizer,e.occurred_on occurredOn,e.requested_hours requestedHours,e.description,e.status,e.credited_hours creditHours,e.review_note reviewNote,u.id userId,u.name,u.department FROM external_trainings e JOIN users u ON e.user_id=u.id' + (status ? ' WHERE e.status=?' : '') + ' ORDER BY e.created_at DESC,e.id DESC',status ? [status] : [],url)
       return mapPage(result,record => ({ ...record,proofs:proofList(db,'external_id',record.id) }))
     },
-    review(id, input, actor) {
+    review(id, input, actor, authorize = () => actor) {
       const status = input.status, note = typeof input.note === 'string' ? input.note.trim() : ''
       if (!['approved','rejected'].includes(status) || note.length > 500 || (status === 'rejected' && !note) || (status === 'approved' && !validHours(input.creditHours)))
         fail(400, '请填写审核结果、认定学时或驳回原因')
-      const record = db.prepare('SELECT title,occurred_on,user_id FROM external_trainings WHERE id=?').get(id)
-      if (status === 'approved' && record && platformDuplicate(record.title, record.occurred_on, record.user_id))
-        fail(409, '该人员已报名同日同名的平台活动，请通过平台活动认定，避免重复计时')
-      const result = db.prepare("UPDATE external_trainings SET status=?,credited_hours=?,reviewed_by=?,reviewed_at=?,review_note=? WHERE id=? AND status='pending'").run(status, status === 'approved' ? input.creditHours : 0, actor.id, Date.now(), note, id)
-      if (!result.changes) fail(409, '记录不存在或已审核')
-      return { ok: true }
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        actor = authorize() || actor
+        const record = db.prepare('SELECT title,occurred_on,user_id FROM external_trainings WHERE id=?').get(id)
+        if (status === 'approved' && record && platformDuplicate(record.title, record.occurred_on, record.user_id))
+          fail(409, '该人员已报名同日同名的平台活动，请通过平台活动认定，避免重复计时')
+        const result = db.prepare("UPDATE external_trainings SET status=?,credited_hours=?,reviewed_by=?,reviewed_at=?,review_note=? WHERE id=? AND status='pending'").run(status, status === 'approved' ? input.creditHours : 0, actor.id, Date.now(), note, id)
+        if (!result.changes) fail(409, '记录不存在或已审核')
+        db.exec('COMMIT')
+        return { ok: true }
+      } catch (error) { db.exec('ROLLBACK'); throw error }
     },
   }
 }

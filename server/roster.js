@@ -30,9 +30,9 @@ async function importRoster(db, input, { allowAdmins = false, authorize = () => 
   for (const row of rows) checkExisting(db, row)
   const encoded = []
   for (const row of rows) encoded.push(await encodePassword(row.initialPassword))
-  authorize()
   db.exec('BEGIN IMMEDIATE')
   try {
+    authorize()
     // 哈希期间可能有其他管理员导入，事务内重新验证整批。
     for (const row of rows) checkExisting(db, row)
     rows.forEach((row, i) => {
@@ -49,10 +49,10 @@ async function importRoster(db, input, { allowAdmins = false, authorize = () => 
 }
 async function resetPassword(db, id, password, authorize = () => {}) {
   const encoded = await encodePassword(password)
-  authorize()
-  if (!db.prepare('SELECT id FROM users WHERE id=?').get(id)) fail(404, '用户不存在')
   db.exec('BEGIN IMMEDIATE')
   try {
+    authorize()
+    if (!db.prepare('SELECT id FROM users WHERE id=?').get(id)) fail(404, '用户不存在')
     db.prepare(`INSERT INTO credentials VALUES(?,?,1)
       ON CONFLICT(user_id) DO UPDATE SET password_hash=excluded.password_hash,must_change=1`).run(id, encoded)
     db.prepare('DELETE FROM sessions WHERE user_id=?').run(id)
