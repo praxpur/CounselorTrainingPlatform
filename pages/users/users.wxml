@@ -55,10 +55,11 @@
           value="{{query}}"
           bindinput="searchInput"
           confirm-type="search"
-          bindconfirm="load"
+          bindconfirm="search"
         />
-        <button class="button-mini" size="mini" bindtap="load">搜索</button>
+        <button class="button-mini" size="mini" bindtap="search">搜索</button>
       </view>
+      <view class="muted" wx:if="{{dirty}}">搜索条件已修改，请点击搜索后继续翻页。</view>
       <view class="card" wx:for="{{users}}" wx:key="id">
         <view class="title">
           {{item.name}}
@@ -77,8 +78,8 @@
       </view>
       <view class="muted" wx:if="{{!loading && !errorMessage && !users.length}}">暂无匹配用户</view>
       <view class="muted" wx:if="{{windowed}}">当前显示第 {{displayFrom}}—{{displayTo}} 条，可返回上一页。</view>
-      <button wx:if="{{previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{loading || busy || uploading}}">上一页</button>
-      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading || busy || uploading}}">加载更多（{{users.length}} / {{total}}）</button>
+      <button wx:if="{{previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{loading || busy || uploading || dirty}}">上一页</button>
+      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading || busy || uploading || dirty}}">加载更多（{{users.length}} / {{total}}）</button>
     </view>
   </scroll-view>
 </view>

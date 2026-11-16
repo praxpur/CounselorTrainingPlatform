@@ -1,5 +1,5 @@
 const api = require('../../utils/store')
-const { loadList } = require('../../utils/pagination')
+const { loadList, cancelList } = require('../../utils/pagination')
 const empty = () => ({ id: '', name: '', department: '', initialPassword: '' })
 Page({
   data: {
@@ -10,6 +10,8 @@ Page({
     editing: false,
     resetting: false,
     query: '',
+    appliedQuery: '',
+    dirty: false,
     busy: false,
     formVisible: false,
     scrollTarget: '',
@@ -29,9 +31,17 @@ Page({
     this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value })
   },
   searchInput(e) {
-    this.setData({ query: e.detail.value })
+    cancelList(this,'users')
+    this.setData({ query: e.detail.value, dirty: true, loading: false })
   },
-  load(append = false) { return loadList(this,api,{ path:'/api/admin/users?q='+encodeURIComponent(this.data.query),field:'users',append }) },
+  search() {
+    this.setData({query:this.data.query.trim(),appliedQuery:this.data.query.trim(),dirty:false})
+    return this.load()
+  },
+  load(append = false) {
+    if(this.data.dirty)return
+    return loadList(this,api,{ path:'/api/admin/users?q='+encodeURIComponent(this.data.appliedQuery),field:'users',append })
+  },
   previous(){return this.load({pageOffset:this.data.previousOffset})},
   more() { return this.load(true) },
   edit(e) {
