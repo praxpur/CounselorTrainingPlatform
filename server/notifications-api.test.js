@@ -37,8 +37,6 @@ test('发布、报名、取消、恢复经真实接口产生站内通知，读�
   const all=await call('/api/notifications/read-all','POST',{userId:'bob'})
   assert.equal(all.body.unreadCount,0)
   assert.equal((await call('/api/notifications/unread-count','GET',null,bob)).body.unreadCount,1)
-  const logged=db.prepare("SELECT actor_id FROM audit_logs WHERE action='notifications.update' ORDER BY id DESC LIMIT 1").get()
-  assert.equal(logged.actor_id,'alice')
   assert.equal((await call('/api/notifications','GET',null,null)).status,401)
 })
 

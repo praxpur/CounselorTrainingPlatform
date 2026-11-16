@@ -5,7 +5,6 @@ Page({
   data: {
     loading: false,
     errorMessage: '',
-    allRecords: [],
     records: [],
     filter: 'all',
     selectedId: null,
@@ -19,10 +18,9 @@ Page({
     this.load()
   },
   load(append = false) {
-    return loadList(this,api,{ path:'/api/my/records?filter='+this.data.filter,field:'records',append,start:{ allRecords:[] },
+    return loadList(this,api,{ path:'/api/my/records?filter='+this.data.filter,field:'records',append,
       map:record=>({ ...record,startsText:api.time(record.startsAt),locationText:record.location||'地点待定',
-        experienceLabel:{ pending:'待审核',rejected:'已驳回',approved:'已通过' }[record.experienceStatus]||'' }),
-      after:(_result,rows)=>({ allRecords:rows }) })
+        experienceLabel:{ pending:'待审核',rejected:'已驳回',approved:'已通过' }[record.experienceStatus]||'' }) })
   },
   previous(){return this.load({pageOffset:this.data.previousOffset})},
   more() { return this.load(true) },
@@ -31,20 +29,8 @@ Page({
     this.setData({ filter: event.currentTarget.dataset.filter, selectedId: null, description: '' })
     this.load()
   },
-  applyFilter() {
-    const groups = {
-      pending: ['pending', 'unsubmitted'],
-      reviewed: ['approved', 'rejected'],
-      cancelled: ['cancelled'],
-    }
-    this.setData({
-      records: this.data.allRecords.filter(
-        (r) => this.data.filter === 'all' || groups[this.data.filter].includes(r.reviewStatus),
-      ),
-    })
-  },
   open(event) {
-    const record = this.data.allRecords.find(value => value.id === event.currentTarget.dataset.id)
+    const record = this.data.records.find(value => value.id === event.currentTarget.dataset.id)
     if (record?.external) {
       wx.navigateTo({ url: '/pages/self-training/self-training?id=' + record.externalId })
       return
@@ -53,7 +39,7 @@ Page({
   },
   editExperience(event) {
     if (this.data.busy || this.data.uploading) return
-    const record = this.data.allRecords.find((r) => r.id === event.currentTarget.dataset.id)
+    const record = this.data.records.find((r) => r.id === event.currentTarget.dataset.id)
     if (record?.external) { this.open(event); return }
     if (record) this.setData({ selectedId: record.id, description: record.experience || '', proofs: record.proofs || [] })
   },

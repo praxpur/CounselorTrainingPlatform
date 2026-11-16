@@ -10,7 +10,6 @@ const { test, before, after } = require('node:test')
 const assert = require('node:assert/strict')
 const { DatabaseSync } = require('node:sqlite')
 const { ensureRegistrationSchema, createRegistration } = require('./registration')
-const { createAudit } = require('./audit')
 const { server, db } = require('./server')
 let base, admin
 const users = {}
@@ -69,12 +68,7 @@ test('取消释放名额但保留记录，重新报名复用原行并记录前�
   assert.equal(resumed.body.registered, true)
   assert.equal(resumed.body.withdrawnAt, null)
   assert.equal(db.prepare('SELECT COUNT(*) n FROM registrations WHERE activity_id=? AND user_id=?').get(id, 'a').n, 1)
-  const logs = db.prepare("SELECT * FROM audit_logs WHERE action='registrations.update' AND target=? ORDER BY id").all(id + ':a')
-  assert.equal(logs.length, 2)
-  assert.equal(logs[0].actor_id, 'a')
-  assert.equal(JSON.parse(logs[0].detail).before.cancelled_at, null)
-  assert.ok(JSON.parse(logs[0].detail).after.cancelled_at)
-  assert.equal(JSON.parse(logs[1].detail).after.cancelled_at, null)
+
 })
 
 test('取消只操作当前会话，名额释放后被他人占用不能强行重新报名', async () => {
@@ -167,12 +161,11 @@ test('取消后的并发重新报名仍遵守容量且没有重复主键', async
   assert.equal(db.prepare('SELECT COUNT(*) n FROM (SELECT user_id FROM registrations WHERE activity_id=? GROUP BY user_id HAVING COUNT(*)>1)').get(id).n, 0)
 })
 
-test('旧库增加取消字段保留原值，已有触发器时迁移可重入', () => {
+test('增加取消字段保留原值，重复初始化可重入', () => {
   const old = new DatabaseSync(':memory:')
   try {
     old.exec(`CREATE TABLE registrations(activity_id INTEGER,user_id TEXT,registered_at INTEGER,confirmed_at INTEGER,confirmed_by TEXT,credited_hours REAL);
-      INSERT INTO registrations VALUES(1,'a',123,NULL,NULL,0);
-      CREATE TRIGGER audit_registrations_update AFTER UPDATE ON registrations BEGIN SELECT audit_now(); END;`)
+      INSERT INTO registrations VALUES(1,'a',123,NULL,NULL,0);`)
     ensureRegistrationSchema(old)
     ensureRegistrationSchema(old)
     const record = old.prepare('SELECT * FROM registrations').get()
@@ -191,18 +184,4 @@ test('取得写锁后复核权限，撤销权限不会留下报名或取消写�
   service.register(id, 'a')
   assert.throws(() => service.cancel(id, 'a', revoked), { status: 401 })
   assert.equal(db.prepare('SELECT cancelled_at FROM registrations WHERE activity_id=?').get(id).cancelled_at, null)
-})
-
-test('审计触发器刷新后补充取消字段，旧历史仍保留', () => {
-  const copy = new DatabaseSync(':memory:')
-  try {
-    for (const { sql } of db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all()) copy.exec(sql)
-    const audit = createAudit(copy)
-    copy.exec("DROP TRIGGER audit_registrations_update; CREATE TRIGGER audit_registrations_update AFTER UPDATE ON registrations BEGIN INSERT INTO audit_logs(happened_at,actor_id,action,target,outcome,detail,request_id) VALUES(1,'old','old','old','success','{}','old'); END")
-    createAudit(copy)
-    copy.exec("INSERT INTO users(id,name,department,role) VALUES('a','a','学院','counselor'); INSERT INTO activities(id,title,description,location,starts_at,ends_at,capacity,credit_hours,created_at) VALUES(1,'活动','','',1,2,1,1,1); INSERT INTO registrations(activity_id,user_id,registered_at) VALUES(1,'a',1); UPDATE registrations SET cancelled_at=2 WHERE activity_id=1")
-    const row = copy.prepare("SELECT detail FROM audit_logs WHERE action='registrations.update'").get()
-    assert.equal(JSON.parse(row.detail).after.cancelled_at, 2)
-    assert.ok(audit)
-  } finally { copy.close() }
 })

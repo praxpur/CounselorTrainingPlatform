@@ -1,4 +1,0 @@
-<view class="page-shell">
-  <navigation-bar title="人员参加情况" back="{{true}}"></navigation-bar>
-  <view class="container"><view class="muted">正在打开人员参加情况…</view></view>
-</view>

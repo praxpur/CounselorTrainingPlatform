@@ -308,7 +308,7 @@ async function main() {
   if (command === 'cleanup' && args.length === 0) {
     await regularFile(config.dbPath)
     const result = await withMaintenanceLock(config.dbPath, async () => {
-      // 只有写维护才初始化应用，以注册当前审计函数及触发器。
+      // 只有写维护才初始化应用，使用当前业务 schema。
       const { db } = require('./server')
       try { return await cleanup({ db, uploadDir: config.uploadDir }) } finally { db.close() }
     })

@@ -14,10 +14,7 @@ async function fixture({ legacy = false } = {}) {
   const db = new DatabaseSync(dbPath)
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;
     CREATE TABLE sessions(token_hash TEXT PRIMARY KEY,expires INTEGER);
-    CREATE TABLE proof_files(id TEXT PRIMARY KEY,bytes INTEGER,created_at INTEGER,external_id INTEGER,experience_id INTEGER${legacy ? '' : ',ever_submitted INTEGER NOT NULL DEFAULT 0'});
-    CREATE TABLE audit_logs(action TEXT,target TEXT);
-    CREATE TRIGGER audit_proof_delete AFTER DELETE ON proof_files BEGIN INSERT INTO audit_logs VALUES('proof.deleted',OLD.id); END;
-    CREATE TRIGGER audit_session_delete AFTER DELETE ON sessions BEGIN INSERT INTO audit_logs VALUES('session.deleted',OLD.token_hash); END;`)
+    CREATE TABLE proof_files(id TEXT PRIMARY KEY,bytes INTEGER,created_at INTEGER,external_id INTEGER,experience_id INTEGER${legacy ? '' : ',ever_submitted INTEGER NOT NULL DEFAULT 0'});`)
   return { root, dbPath, uploadDir, backupDir, db, legacy }
 }
 async function addProof(state, { age = 0, linked = false, everSubmitted = linked, content = 'proof' } = {}) {
@@ -177,7 +174,7 @@ test('备份与清理使用同一排他维护锁，锁不会按时间被自动�
   } finally { await dispose(state) }
 })
 
-test('清理仅移除过期会话与超过七天的未绑定材料，并保留审计和已提交证明', async () => {
+test('清理仅移除过期会话与超过七天的未绑定材料，并保留已提交证明', async () => {
   const state = await fixture()
   try {
     const old = await addProof(state, { age: 8 * 86400000 })
@@ -199,7 +196,6 @@ test('清理仅移除过期会话与超过七天的未绑定材料，并保留�
     assert.equal(await fs.readFile(path.join(state.uploadDir, recent), 'utf8'), 'proof')
     assert.equal(await fs.readFile(path.join(state.uploadDir, linked), 'utf8'), 'proof')
     assert.equal(await fs.readFile(unknown, 'utf8'), 'keep this operator file')
-    assert.equal(state.db.prepare('SELECT COUNT(*) n FROM audit_logs').get().n, 2)
     assert.equal(state.db.prepare('SELECT COUNT(*) n FROM sessions').get().n, 1)
     await assert.rejects(cleanup({ ...state, orphanDays: 1 }), /至少保留 7 天/)
   } finally { await dispose(state) }
@@ -209,8 +205,8 @@ test('清理数据库删除失败时恢复材料，上次中断的隔离文件�
   const state = await fixture()
   try {
     const key = await addProof(state, { age: 8 * 86400000 })
-    state.db.exec("CREATE TRIGGER fail_delete BEFORE DELETE ON proof_files BEGIN SELECT RAISE(ABORT,'audit unavailable'); END")
-    await assert.rejects(cleanup(state), /audit unavailable/)
+    state.db.exec("CREATE TRIGGER fail_delete BEFORE DELETE ON proof_files BEGIN SELECT RAISE(ABORT,'simulated database failure'); END")
+    await assert.rejects(cleanup(state), /simulated database failure/)
     assert.equal(await fs.readFile(path.join(state.uploadDir, key), 'utf8'), 'proof')
     assert.equal(state.db.prepare('SELECT COUNT(*) n FROM proof_files').get().n, 1)
     state.db.exec('DROP TRIGGER fail_delete')
@@ -258,7 +254,7 @@ test('旧 schema 无提交历史标志时保守保留元数据材料，仅清理
   } finally { await dispose(state) }
 })
 
-test('维护 CLI 可对应用审计库备份、清理并恢复，备份前不会执行迁移', async () => {
+test('维护 CLI 可对应用数据库备份、清理并恢复，备份前不会执行迁移', async () => {
   const { promisify } = require('node:util')
   const execFile = promisify(require('node:child_process').execFile)
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'training-maintenance-cli-'))
@@ -302,7 +298,6 @@ test('维护 CLI 可对应用审计库备份、清理并恢复，备份前不会
     const live = new DatabaseSync(dbPath, { readOnly: true })
     try {
       assert.equal(live.prepare('SELECT COUNT(*) n FROM proof_files').get().n, 0)
-      assert.ok(live.prepare("SELECT COUNT(*) n FROM audit_logs WHERE action='proof_files.delete'").get().n >= 1)
     } finally { live.close() }
   } finally { await fs.rm(root, { recursive: true, force: true }) }
 })

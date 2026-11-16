@@ -5,7 +5,6 @@ Page({
     loading: false,
     errorMessage: '',
     records: [],
-    allRecords: [],
     notes: {},
     hours: {},
     busy: false,
@@ -28,7 +27,7 @@ Page({
         const retained=new Set(rows.map(record=>String(record.id)))
         for(const id of Object.keys(this.draftVersions))
           if(!retained.has(id)&&notes[id]===undefined&&hours[id]===undefined)delete this.draftVersions[id]
-        return {notes,hours,allRecords:rows,pendingCount:report.pendingCount ?? rows.filter(record=>record.status==='pending').length}
+        return {notes,hours,pendingCount:report.pendingCount}
       } })
   },
   previous(){return this.load({pageOffset:this.data.previousOffset})},
@@ -46,7 +45,7 @@ Page({
     const id = e.currentTarget.dataset.id,
       status = e.currentTarget.dataset.status,
       note = this.data.notes[id] || ''
-    const record = this.data.allRecords.find(value => value.id === id)
+    const record = this.data.records.find(value => value.id === id)
     if (!record) return
     const creditHours = Number(this.data.hours[id] ?? record.requestedHours)
     if (status === 'rejected' && !note.trim()) {

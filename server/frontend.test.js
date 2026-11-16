@@ -4,19 +4,6 @@ const fs = require('node:fs')
 const path = require('node:path')
 const vm = require('node:vm')
 
-test('旧管理和统计入口保持注册并跳转到当前页面，失败时有回退',()=>{
-  const routes=JSON.parse(fs.readFileSync(path.join(__dirname,'../app.json'),'utf8')).pages
-  for(const [route,target] of [['pages/admin/admin','/pages/activity-manage/activity-manage'],['pages/people/people','/pages/stastic/people/people'],['pages/ranking/ranking','/pages/stastic/ranking/ranking']]){
-    assert.ok(routes.includes(route))
-    let redirected,relaunched
-    const {page:entry}=page(route+'.js',{}, {
-      redirectTo:options=>{redirected=options.url;options.fail()},reLaunch:options=>{relaunched=options.url},
-    })
-    entry.onLoad()
-    assert.equal(redirected,target);assert.equal(relaunched,target)
-  }
-})
-
 test('注册页面、字面量品牌资源完整，运维目录排除出小程序包',()=>{
   const root=path.join(__dirname,'..'),config=JSON.parse(fs.readFileSync(path.join(root,'app.json'),'utf8'))
   for(const route of config.pages)for(const ext of ['.js','.json','.wxml','.wxss'])assert.ok(fs.existsSync(path.join(root,route+ext)),route+ext)
@@ -91,24 +78,6 @@ test('长经历列表限制页面保留量，切换窗口后仍可返回上一�
   assert.match(urls.at(-1),/offset=20/)
   assert.equal(records.data.records[0].id,21)
   assert.ok(JSON.stringify(records.data).length<300000)
-})
-
-test('审计页使用游标追加，按钮事件刷新不会误当作加载更多', async () => {
-  const urls = []
-  const { page: audit } = page('pages/audit/audit.js', {
-    guard: () => true, time: () => '时间', error() {},
-    request: async url => {
-      urls.push(url)
-      return { rows: [{ id: 4 - urls.length, action: 'users.update', detail: {} }], hasMore: urls.length === 1, nextCursor: urls.length === 1 ? 3 : null }
-    },
-  })
-  await audit.load()
-  await audit.more()
-  assert.equal(audit.data.rows.length, 2)
-  assert.match(urls[1], /before=3/)
-  await audit.load({ type: 'tap' })
-  assert.equal(audit.data.rows.length, 1)
-  assert.ok(!urls[2].includes('before='))
 })
 
 test('自行培训提交后只读，管理员认定学时走独立审核接口', async () => {
@@ -308,13 +277,13 @@ test('页面交互绑定都有对应的处理函数', () => {
   }
 })
 
-test('统计入口及子页已注册，首页统计导航均指向有效页面', async () => {
+test('当前页面已注册，所有固定导航均指向有效页面', async () => {
   const root = path.join(__dirname, '..')
   const routes = JSON.parse(fs.readFileSync(path.join(root, 'app.json'), 'utf8')).pages
-  for (const route of ['pages/stastic/static', 'pages/stastic/people/people', 'pages/stastic/ranking/ranking']) {
+  for (const route of ['pages/stastic/static', 'pages/activity-manage/activity-manage', 'pages/record/record']) {
     assert.ok(routes.includes(route), route)
   }
-  for (const route of ['pages/index/index', 'pages/stastic/static']) {
+  for (const route of routes) {
     const template = fs.readFileSync(path.join(root, route + '.wxml'), 'utf8')
     for (const match of template.matchAll(/<navigator\b[^>]*\burl="\/([^"?]+)"/g)) {
       assert.ok(routes.includes(match[1]), route + ': ' + match[1])
@@ -407,7 +376,7 @@ test('列表网络错误与空数据区分，重试后恢复', async () => {
     error() {},
     request: async () => {
       if (offline) throw new Error('网络不可用')
-      return [{ id: 1, title: '活动', startsAt: 1, reviewStatus: 'pending' }]
+      return { rows: [{ id: 1, title: '活动', startsAt: 1, reviewStatus: 'pending' }], total: 1, hasMore: false, nextOffset: null }
     },
   }
   const { page: records } = page('pages/record/record.js', api)
@@ -429,7 +398,7 @@ test('首页身份确认前隐藏底栏，仅普通用户确认后显示，旧�
     format: value => value,
     request: url => url === '/api/me'
       ? new Promise((resolve, reject) => pending.push({resolve, reject}))
-      : Promise.resolve(url === '/api/admin/review-count' ? {pendingCount:0} : []),
+      : Promise.resolve(url === '/api/admin/review-count' ? {pendingCount:0} : {rows:[],total:0,hasMore:false,nextOffset:null}),
   }
   const {page: home} = page('pages/index/index.js', api, {
     hideTabBar: () => changes.push('hide'),

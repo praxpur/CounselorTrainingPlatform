@@ -9,23 +9,16 @@
     "pages/activity-manage/activity-manage",
     "pages/activity-publish/activity-publish",
     "pages/attendees/attendees",
-    "pages/experiences/experiences",
     "pages/reviews/reviews",
     "pages/users/users",
     "pages/my-hours/my-hours",
     "pages/stastic/static",
-    "pages/stastic/people/people",
-    "pages/stastic/ranking/ranking",
     "pages/password/password",
     "pages/user-import/user-import",
     "pages/attendance/attendance",
     "pages/attendance-manage/attendance-manage",
     "pages/self-training/self-training",
-    "pages/audit/audit",
-    "pages/notifications/notifications",
-    "pages/admin/admin",
-    "pages/people/people",
-    "pages/ranking/ranking"
+    "pages/notifications/notifications"
   ],
   "window": {
     "navigationStyle": "custom"

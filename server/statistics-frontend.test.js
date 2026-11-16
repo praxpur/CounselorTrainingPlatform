@@ -74,23 +74,10 @@ test('加载失败禁用旧数据导出，重试成功后恢复，旧页面消�
   const loading=late.load();await new Promise(setImmediate);late.onHide();resolveLate(report([{key:'late'}]));await loading
   assert.equal(late.data.canExport,false);assert.equal(late.data.rows.length,0)
 })
-test('工作台只保留统一统计入口，审计归入功能区，密码在退出上方',()=>{
+test('工作台只保留统一统计入口，密码在退出上方',()=>{
   const home=fs.readFileSync(path.join(__dirname,'../pages/index/index.wxml'),'utf8')
-  assert.ok(!home.includes('url="/pages/stastic/people/people"'))
   assert.equal((home.match(/url="\/pages\/stastic\/static"/g)||[]).length,1)
   assert.ok(home.includes('数据统计与排名'))
-  assert.ok(home.indexOf('url="/pages/audit/audit"')<home.indexOf('class="logout"'))
   const profile=fs.readFileSync(path.join(__dirname,'../pages/profile/profile.wxml'),'utf8')
   assert.ok(profile.indexOf('url="/pages/password/password"')<profile.indexOf('bindtap="logout"'))
-})
-
-test('旧统计页面保留链接并进入统一页对应维度',()=>{
-  for(const [route,dimension]of [['people','counselor'],['ranking','ranking']]){
-    let config,target
-    vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../pages/stastic/'+route+'/'+route+'.js'),'utf8'),{
-      Page:value=>{config=value},wx:{redirectTo:options=>{target=options.url}},
-    })
-    config.onLoad()
-    assert.equal(target,'/pages/stastic/static?dimension='+dimension)
-  }
 })

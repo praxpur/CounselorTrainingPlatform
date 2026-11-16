@@ -1,5 +1,5 @@
 // 局域网真机调试地址；切换 Wi-Fi 后需更新 IP，正式部署改为学校 HTTPS 域名。
-const API_BASE = 'http://10.29.182.131:3000'
+const API_BASE = 'http://10.29.182.131:3001'
 const TOKEN_KEY = 'training_token_v2'
 function request(path, method, data, options = {}) {
   return new Promise((resolve, reject) =>

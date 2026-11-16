@@ -1,3 +1,13 @@
-.proof-files { margin: 20rpx 0; }
-.line { display: flex; align-items: center; gap: 12rpx; flex-wrap: wrap; }
-.line text { flex: 1; word-break: break-all; }
+.proof-files {
+    margin: 20rpx 0;
+}
+.line {
+    display: flex;
+    align-items: center;
+    gap: 12rpx;
+    flex-wrap: wrap;
+}
+.line text {
+    flex: 1;
+    word-break: break-all;
+}

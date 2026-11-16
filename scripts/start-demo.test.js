@@ -5,7 +5,7 @@ const path = require('node:path')
 const { startDemo, prepareDirectory, prepareAccounts } = require('./start-demo')
 const temporary = path.resolve(__dirname, '../tmp')
 
-test('演示入口自动准备双账号、不要求改密、重复准备保留活动且隔离数据', async () => {
+test('演示入口只准备管理员，重复准备保留自行创建的用户和活动', async () => {
   await fs.mkdir(temporary, { recursive: true })
   const directory = await fs.mkdtemp(path.join(temporary, 'demo-launcher-test-'))
   const apiFile = path.join(directory, 'store.js')
@@ -22,9 +22,11 @@ test('演示入口自动准备双账号、不要求改密、重复准备保留�
       return result
     }
     assert.equal((await login('admin')).user.role, 'admin')
-    assert.equal((await login('user')).user.role, 'counselor')
+    assert.equal(application.db.prepare("SELECT COUNT(*) n FROM users WHERE id='user'").get().n, 0)
+    await require('../server/roster').importRoster(application.db, [{ id: 'user', name: '测试用户', department: '测试学院', role: 'counselor', initialPassword: 'Test12345678!' }])
     application.db.prepare("INSERT INTO activities(title,description,location,starts_at,ends_at,capacity,credit_hours,created_at) VALUES('演示记录','','',1,2,0,1.5,1)").run()
     await prepareAccounts(application.db)
+    assert.equal(application.db.prepare("SELECT name FROM users WHERE id='user'").get().name, '测试用户')
     assert.equal(application.db.prepare('SELECT COUNT(*) n FROM activities').get().n, 1)
     await login('admin')
     assert.equal(process.env.DB_PATH, path.join(directory, 'training.db'))

@@ -4,7 +4,7 @@ const fs = require('node:fs'), path = require('node:path'), crypto = require('no
 const { Worker } = require('node:worker_threads')
 const scratch = path.join(__dirname, '../tmp')
 fs.mkdirSync(scratch, { recursive: true })
-const root = fs.mkdtempSync(path.join(scratch, 'audit-business-'))
+const root = fs.mkdtempSync(path.join(scratch, 'business-boundaries-'))
 const file = path.join(root, 'test.db')
 process.env.DB_PATH = file
 process.env.UPLOAD_DIR = path.join(root, 'uploads')
@@ -94,7 +94,6 @@ async function revokeWhileWaiting(action, changeRole = false) {
     const {parentPort,workerData}=require('node:worker_threads')
     const {DatabaseSync}=require('node:sqlite')
     const d=new DatabaseSync(workerData.file)
-    d.function('audit_actor',()=> 'operator');d.function('audit_request',()=> 'operator-reset');d.function('audit_now',()=>Date.now())
     d.exec('PRAGMA foreign_keys=ON;PRAGMA busy_timeout=5000;BEGIN IMMEDIATE')
     parentPort.postMessage('locked')
     const state=new Int32Array(workerData.signal)

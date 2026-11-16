@@ -66,7 +66,7 @@ test('隐藏页面后的旧身份响应不能把辅导员入口恢复给新管�
 
 test('活动记录仍可查看自行培训详情和驳回后重新提交', () => {
   const { page: records, navigations } = page('pages/record/record', {})
-  records.data.allRecords = [{ id: 'external:7', external: true, externalId: 7, reviewStatus: 'rejected', canSubmit: true }]
+  records.data.records = [{ id: 'external:7', external: true, externalId: 7, reviewStatus: 'rejected', canSubmit: true }]
   const event = { currentTarget: { dataset: { id: 'external:7' } } }
   records.open(event)
   records.editExperience(event)

@@ -97,7 +97,6 @@ function createEvidence(db) {
     preserveExistingProofs() {
       if(db.prepare("SELECT name FROM evidence_migrations WHERE name='submitted-proof-retention-v1'").get())return
       // 旧库无法仅凭当前关联证明文件从未提交；首次升级保守保留所有已有材料。
-      // 在注册审计函数之后执行，避免有旧审计触发器的库出现初始化空窗。
       db.exec('BEGIN IMMEDIATE')
       try{
         db.prepare('UPDATE proof_files SET ever_submitted=1 WHERE ever_submitted=0').run()

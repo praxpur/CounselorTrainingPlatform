@@ -19,7 +19,7 @@ Page({
     try {
       const [activity,result]=await Promise.all([api.request('/api/activities/'+this.id),api.request(pagePath('/api/admin/activities/'+this.id+'/attendees',offset||0))])
       if(epoch!==this.requestId)return
-      const page=readPage(result,'rows',offset||0),incoming=page.rows.map(row=>({...row,registeredText:api.time(row.registeredAt)}))
+      const page=readPage(result),incoming=page.rows.map(row=>({...row,registeredText:api.time(row.registeredAt)}))
       const combined=append?[...this.data.attendees,...incoming]:incoming
       const windowed=combined.length>100
       const rows=windowed?incoming:combined,first=windowed||!append?offset:(this.data.displayFrom||1)-1

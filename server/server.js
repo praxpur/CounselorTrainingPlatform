@@ -8,7 +8,7 @@ const { ensureRegistrationSchema,createRegistration } = require('./registration'
 const { importRoster, resetPassword } = require('./roster')
 const { createAttendance } = require('./attendance')
 const { createEvidence, proofList } = require('./evidence')
-const { createAudit } = require('./audit')
+const { removeAuditSchema } = require('./schema')
 const { createNotifications } = require('./notifications')
 const { createStatistics } = require('./statistics')
 const { pageQuery, mapPage, boundedRows } = require('./pagination')
@@ -18,6 +18,8 @@ const { DatabaseSync } = require('node:sqlite')
 const db = new DatabaseSync(
   process.env.DB_PATH || require('node:path').join(__dirname, 'training.db'),
 )
+db.exec('PRAGMA busy_timeout=5000')
+removeAuditSchema(db)
 db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
 CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY, name TEXT NOT NULL, department TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('admin','counselor')), enabled INTEGER NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), expires INTEGER NOT NULL);
@@ -63,7 +65,6 @@ const authentication = createAuthentication(db)
 const attendance = createAttendance(db)
 const evidence = createEvidence(db)
 const notifications = createNotifications(db)
-const audit = createAudit(db)
 evidence.preserveExistingProofs()
 const statistics = createStatistics(db)
 const registration = createRegistration(db)
@@ -280,7 +281,7 @@ function withExternalCounts(rows) {
   return rows.map(row=>({ ...row,externalSubmittedCount:counts.get(row.id)?.submitted||0,externalApprovedCount:counts.get(row.id)?.approved||0 }))
 }
 
-const server = http.createServer((req, res) => audit.run(req, res, async () => {
+const server = http.createServer(async (req, res) => {
   try {
     let url
     try {
@@ -294,7 +295,6 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     if (path === '/health' && method === 'GET') return send(res, 200, { ok: true })
     if (path === '/api/auth/login' && method === 'POST') {
       const input = await body(req)
-      if (typeof input.id === 'string' && /^[a-zA-Z0-9_-]{1,40}$/.test(input.id.trim())) req.auditAccount = input.id.trim()
       return send(res, 200, await authentication.login(input, clientIp(req)))
     }
     if (path === '/api/auth/password' && method === 'POST') {
@@ -311,7 +311,6 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
         id = String(b.id || '').trim(),
         name = String(b.name || '').trim(),
         department = String(b.department || '').trim()
-      if (/^[a-zA-Z0-9_-]{1,40}$/.test(id)) req.auditAccount = id
       if (!/^[a-zA-Z0-9_-]{1,40}$/.test(id) || !name || name.length > 50 || department.length > 100)
         fail(400, '请填写有效的测试工号和姓名')
       const role = id === process.env.DEV_ADMIN_ID ? 'admin' : 'counselor'
@@ -348,10 +347,6 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     if (method === 'GET' && ['/api/my/exports/annual','/api/admin/exports/people','/api/admin/exports/ranking','/api/admin/exports/statistics'].includes(path)) {
       if (path.startsWith('/api/admin/')) admin(u)
       assertExportAvailable()
-    }
-    if (path === '/api/admin/audit-logs' && method === 'GET') {
-      admin(u)
-      return send(res, 200, audit.list(url))
     }
     if (path === '/api/admin/statistics' && method === 'GET') {
       admin(u)
@@ -959,7 +954,7 @@ const server = http.createServer((req, res) => audit.run(req, res, async () => {
     if (!res.headersSent && !res.destroyed)
       send(res, e.status || 500, { error: e.status ? e.message : '服务器内部错误' })
   }
-}))
+})
 if (require.main === module) {
   const host = process.env.HOST || '127.0.0.1'
   server.listen({ port: Number(process.env.PORT || 3000), host, backlog: Number(process.env.LISTEN_BACKLOG || 2048) }, () =>

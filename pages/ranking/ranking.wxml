@@ -1,4 +1,0 @@
-<view class="page-shell">
-  <navigation-bar title="年度学时排名" back="{{true}}"></navigation-bar>
-  <view class="container"><view class="muted">正在打开年度学时排名…</view></view>
-</view>

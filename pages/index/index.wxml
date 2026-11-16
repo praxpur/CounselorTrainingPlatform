@@ -84,11 +84,6 @@
             </view>
             <view class="arrow">›</view>
           </navigator>
-          <navigator class="admin-item" url="/pages/audit/audit">
-            <view class="admin-icon blue"><image class="admin-icon-image" src="/assets/admin/users.png" mode="aspectFit"></image></view>
-            <view class="admin-content"><view class="title">操作审计</view><view class="muted">追溯人员、活动、审核与导出操作</view></view>
-            <view class="arrow">›</view>
-          </navigator>
         </view>
         <button class="logout" bindtap="logout">退出登录</button>
         <view class="school-footer">济南大学学生工作处</view>
