@@ -27,6 +27,7 @@
           <input
             maxlength="500"
             placeholder="审核意见（驳回时必填）"
+            value="{{notes[item.id] || ''}}"
             data-id="{{item.id}}"
             bindinput="input"
           />

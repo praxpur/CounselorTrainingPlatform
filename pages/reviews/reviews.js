@@ -17,7 +17,19 @@ Page({
   },
   load(append = false) {
     return loadList(this,api,{ path:'/api/admin/reviews'+(this.data.showAll?'':'?status=pending'),field:'records',append,
-      after:(report,rows)=>({ allRecords:rows,pendingCount:report.pendingCount ?? rows.filter(record=>record.status==='pending').length }) })
+      after:(report,rows)=>{
+        const notes={...this.data.notes},hours={...this.data.hours}
+        this.draftVersions ||= {}
+        for(const record of rows){
+          const version=JSON.stringify(record)
+          if(this.draftVersions[record.id] && this.draftVersions[record.id]!==version){delete notes[record.id];delete hours[record.id]}
+          this.draftVersions[record.id]=version
+        }
+        const retained=new Set(rows.map(record=>String(record.id)))
+        for(const id of Object.keys(this.draftVersions))
+          if(!retained.has(id)&&notes[id]===undefined&&hours[id]===undefined)delete this.draftVersions[id]
+        return {notes,hours,allRecords:rows,pendingCount:report.pendingCount ?? rows.filter(record=>record.status==='pending').length}
+      } })
   },
   previous(){return this.load({pageOffset:this.data.previousOffset})},
   more() { return this.load(true) },
@@ -50,6 +62,9 @@ Page({
         try {
           const route = record.external ? '/api/admin/external-trainings/' + record.reviewId : '/api/admin/experiences/' + record.reviewId
           await api.request(route + '/review', 'POST', { status, note, creditHours })
+          const notes={...this.data.notes},hours={...this.data.hours}
+          delete notes[id];delete hours[id]
+          this.setData({notes,hours})
           await this.load()
           wx.showToast({ title: '审核完成' })
         } catch (err) {
