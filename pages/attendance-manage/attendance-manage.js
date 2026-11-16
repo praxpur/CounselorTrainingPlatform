@@ -4,7 +4,7 @@ const methods = ['qr', 'location', 'both']
 Page({
   data: { loading: false, busy: false, errorMessage: '', sessions: [], records: [],
     phaseIndex: 0, phases: ['签到', '签退'], methodIndex: 0, methods: ['扫码', '定位', '扫码＋定位'],
-    duration: '15', radius: '100', latitude: null, longitude: null, placeName: '', qrImage: '', qrExpires: '' },
+    duration: '15', radius: '100', latitude: null, longitude: null, placeName: '', qrImage: '', qrExpires: '', qrPhase: '' },
   onLoad(options) { this.id = options.id },
   onShow() { this.load() },
   load(append = false) {
@@ -30,7 +30,7 @@ Page({
         latitude: this.data.latitude, longitude: this.data.longitude, radius: Number(this.data.radius),
       })
       this.removeQr()
-      this.setData({ qrImage: '', qrExpires: api.time(result.closesAt) })
+      this.setData({ qrImage: '', qrExpires: api.time(result.closesAt), qrPhase: result.phase || (Number(this.data.phaseIndex) === 0 ? 'in' : 'out') })
       if (result.qrPng) {
         const filePath = wx.env.USER_DATA_PATH + '/attendance-' + this.id + '-' + Date.now() + '.png'
         await new Promise((resolve, reject) => wx.getFileSystemManager().writeFile({ filePath, data: result.qrPng, encoding: 'base64', success: resolve, fail: reject }))
@@ -46,8 +46,10 @@ Page({
     this.setData({ busy: true })
     try {
       await api.request('/api/admin/activities/' + this.id + '/attendance/' + event.currentTarget.dataset.phase, 'DELETE')
-      this.removeQr()
-      this.setData({ qrImage: '', qrExpires: '' })
+      if(this.data.qrPhase === event.currentTarget.dataset.phase){
+        this.removeQr()
+        this.setData({ qrImage: '', qrExpires: '', qrPhase: '' })
+      }
       await this.load()
     } catch (error) { api.error(error) }
     finally { this.setData({ busy: false }) }
