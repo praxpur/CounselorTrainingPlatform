@@ -69,6 +69,80 @@ test('WAL 在线备份包含一致的数据库与材料，校验后可恢复到�
   } finally { await dispose(state) }
 })
 
+test('备份包未入清单的非空 WAL 与 journal 均拒绝校验和恢复', async () => {
+  const state = await fixture()
+  let changed
+  try {
+    const made = await backupBundle(state)
+    const database = path.join(made.directory, 'training.db')
+    const before = await fs.readFile(database)
+    changed = new DatabaseSync(database)
+    changed.exec('PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0; CREATE TABLE injected(value TEXT); INSERT INTO injected VALUES(\'unmanifested\')')
+    assert.deepEqual(await fs.readFile(database), before)
+    assert.ok((await fs.stat(database + '-wal')).size > 0)
+    await assert.rejects(verifyBundle(made.directory), /额外 WAL 或 journal/)
+    await assert.rejects(restoreBundle({ bundle: made.directory, dbPath: path.join(state.root, 'wal.db'), uploadDir: path.join(state.root, 'wal-uploads') }), /额外 WAL 或 journal/)
+    changed.close(); changed = null
+    // 独立的新包模拟运输过程中附带的回滚日志。
+    const clean = await backupBundle(state)
+    await fs.writeFile(path.join(clean.directory, 'training.db-journal'), 'unexpected rollback journal')
+    await assert.rejects(verifyBundle(clean.directory), /额外 WAL 或 journal/)
+    await assert.rejects(restoreBundle({ bundle: clean.directory, dbPath: path.join(state.root, 'journal.db'), uploadDir: path.join(state.root, 'journal-uploads') }), /额外 WAL 或 journal/)
+    await assert.rejects(fs.stat(path.join(state.root, 'wal.db')), { code: 'ENOENT' })
+    await assert.rejects(fs.stat(path.join(state.root, 'journal.db')), { code: 'ENOENT' })
+  } finally { changed?.close(); await dispose(state) }
+})
+
+test('校验复制数据库后源文件变化会被拒绝', async () => {
+  const state = await fixture()
+  const originalCopy = fs.copyFile
+  try {
+    const made = await backupBundle(state)
+    const database = path.join(made.directory, 'training.db')
+    let changed = false
+    // 在真实异步文件复制边界插入源文件替换，确定性覆盖校验竞态。
+    fs.copyFile = async (...args) => {
+      await originalCopy(...args)
+      if (!changed && args[0] === database) {
+        changed = true
+        await fs.writeFile(database, 'replaced after snapshot copy')
+      }
+    }
+    await assert.rejects(verifyBundle(made.directory), /数据库校验值不匹配/)
+    assert.equal(changed, true)
+  } finally { fs.copyFile = originalCopy; await dispose(state) }
+})
+
+test('恢复校验后源数据库被替换仍只发布已校验的原始字节', async () => {
+  const state = await fixture()
+  const originalCopy = fs.copyFile
+  try {
+    const key = await addProof(state)
+    state.db.exec("CREATE TABLE restore_probe(value TEXT); INSERT INTO restore_probe VALUES('original')")
+    const made = await backupBundle(state)
+    const database = path.join(made.directory, 'training.db')
+    const originalBytes = await fs.readFile(database)
+    const dbPath = path.join(state.root, 'restored.db'), uploadDir = path.join(state.root, 'restored-uploads')
+    let changed = false
+    fs.copyFile = async (...args) => {
+      await originalCopy(...args)
+      if (!changed && args[1] === path.join(uploadDir, key)) {
+        changed = true
+        const writer = new DatabaseSync(database)
+        try { writer.exec("UPDATE restore_probe SET value='changed after verification'; PRAGMA wal_checkpoint(TRUNCATE)") }
+        finally { writer.close() }
+      }
+    }
+    await restoreBundle({ bundle: made.directory, dbPath, uploadDir })
+    assert.equal(changed, true)
+    assert.notDeepEqual(await fs.readFile(database), originalBytes)
+    assert.deepEqual(await fs.readFile(dbPath), originalBytes)
+    const restored = new DatabaseSync(dbPath, { readOnly: true })
+    try { assert.equal(restored.prepare('SELECT value FROM restore_probe').get().value, 'original') }
+    finally { restored.close() }
+  } finally { fs.copyFile = originalCopy; await dispose(state) }
+})
+
 test('损坏材料和越界清单会拒绝恢复，现有目标文件不被覆盖', async () => {
   const state = await fixture()
   try {

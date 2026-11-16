@@ -2,6 +2,7 @@ const fs = require('node:fs/promises')
 const { createReadStream, constants } = require('node:fs')
 const path = require('node:path')
 const crypto = require('node:crypto')
+const os = require('node:os')
 const { DatabaseSync, backup } = require('node:sqlite')
 
 const PROOF_ID = /^[a-f0-9]{48}$/
@@ -63,7 +64,19 @@ function integrity(db) {
   if (rows.length !== 1 || Object.values(rows[0])[0] !== 'ok') fail('数据库完整性检查失败')
   if (db.prepare('PRAGMA foreign_key_check').get()) fail('数据库外键检查失败')
 }
+async function rejectBundleJournals(databasePath) {
+  for (const suffix of ['-wal', '-journal']) {
+    const filename = databasePath + suffix
+    if (await exists(filename)) {
+      const state = await regularFile(filename)
+      if (state.size > 0) fail('备份包包含额外 WAL 或 journal，请重新生成完整备份')
+    }
+  }
+}
 async function verifyBundle(bundle) {
+  return withVerifiedBundle(bundle, verified => ({ manifest: verified.manifest, databasePath: path.join(bundle, 'training.db'), files: verified.files }))
+}
+async function withVerifiedBundle(bundle, work) {
   bundle = absolute(bundle, '备份目录')
   const manifestPath = path.join(bundle, 'manifest.json')
   const state = await regularFile(manifestPath)
@@ -74,21 +87,34 @@ async function verifyBundle(bundle) {
   if (manifest.version !== 1 || !manifest.database || !Array.isArray(manifest.files)) fail('备份清单格式无效')
   const databasePath = path.join(bundle, 'training.db')
   const databaseState = await regularFile(databasePath)
-  if (manifest.database.bytes !== databaseState.size || await digest(databasePath) !== manifest.database.sha256) fail('备份数据库校验值不匹配')
-  const snapshot = new DatabaseSync(databasePath, { readOnly: true })
-  let rows
-  try { integrity(snapshot); rows = proofRows(snapshot) } finally { snapshot.close() }
-  const expected = new Map(rows.map(row => [row.id, row.bytes]))
-  const seen = new Set()
-  if (expected.size !== manifest.files.length) fail('材料清单与数据库不一致')
-  for (const file of manifest.files) {
-    if (!PROOF_ID.test(file.id) || seen.has(file.id) || !expected.has(file.id) || expected.get(file.id) !== file.bytes || !/^[a-f0-9]{64}$/.test(file.sha256)) fail('材料清单无效或存在重复')
-    seen.add(file.id)
-    const filename = proofPath(path.join(bundle, 'uploads'), file.id)
-    const fileState = await regularFile(filename)
-    if (fileState.size !== file.bytes || await digest(filename) !== file.sha256) fail('备份材料校验失败：' + file.id)
+  if (manifest.database.bytes !== databaseState.size || !/^[a-f0-9]{64}$/.test(manifest.database.sha256)) fail('备份数据库校验值不匹配')
+  await rejectBundleJournals(databasePath)
+  // 只打开私有目录中的副本，绝不让 SQLite 读取备份目录中未列入清单的边车文件。
+  const temporary = await fs.mkdtemp(path.join(os.tmpdir(), 'training-verified-'))
+  const sealedPath = path.join(temporary, 'training.db')
+  try {
+    await fs.copyFile(databasePath, sealedPath, constants.COPYFILE_EXCL)
+    await fs.chmod(sealedPath, 0o600)
+    if ((await fs.stat(sealedPath)).size !== manifest.database.bytes || await digest(sealedPath) !== manifest.database.sha256) fail('备份数据库校验值不匹配')
+    const snapshot = new DatabaseSync(sealedPath, { readOnly: true })
+    let rows
+    try { integrity(snapshot); rows = proofRows(snapshot) } finally { snapshot.close() }
+    const expected = new Map(rows.map(row => [row.id, row.bytes]))
+    const seen = new Set()
+    if (expected.size !== manifest.files.length) fail('材料清单与数据库不一致')
+    for (const file of manifest.files) {
+      if (!PROOF_ID.test(file.id) || seen.has(file.id) || !expected.has(file.id) || expected.get(file.id) !== file.bytes || !/^[a-f0-9]{64}$/.test(file.sha256)) fail('材料清单无效或存在重复')
+      seen.add(file.id)
+      const filename = proofPath(path.join(bundle, 'uploads'), file.id)
+      const fileState = await regularFile(filename)
+      if (fileState.size !== file.bytes || await digest(filename) !== file.sha256) fail('备份材料校验失败：' + file.id)
+    }
+    await rejectBundleJournals(databasePath)
+    if (await digest(databasePath) !== manifest.database.sha256 || await digest(sealedPath) !== manifest.database.sha256) fail('备份数据库校验值不匹配')
+    return await work({ manifest, databasePath: sealedPath, files: rows.length })
+  } finally {
+    await fs.rm(temporary, { recursive: true, force: true })
   }
-  return { manifest, databasePath, files: rows.length }
 }
 async function backupBundle({ dbPath, uploadDir, backupDir, onProgress }) {
   if (typeof backup !== 'function') fail('在线备份需要 Node.js 22.16.0 或更高版本')
@@ -137,40 +163,43 @@ async function restoreBundle({ bundle, dbPath, uploadDir }) {
   if (typeof backup !== 'function') fail('恢复需要 Node.js 22.16.0 或更高版本')
   dbPath = absolute(dbPath, '恢复 DB_PATH'); uploadDir = absolute(uploadDir, '恢复 UPLOAD_DIR')
   if (await exists(dbPath) || await exists(uploadDir)) fail('恢复只允许写入全新的数据库文件和材料目录，禁止覆盖现有数据')
-  const verified = await verifyBundle(bundle)
-  await fs.mkdir(path.dirname(dbPath), { recursive: true, mode: 0o700 })
-  await fs.mkdir(path.dirname(uploadDir), { recursive: true, mode: 0o700 })
-  return withMaintenanceLock(dbPath, async () => {
-    if (await exists(dbPath) || await exists(uploadDir)) fail('恢复目标已存在')
-    await fs.mkdir(uploadDir, { mode: 0o700 })
-    const temporaryDatabase = dbPath + '.restore-' + crypto.randomBytes(8).toString('hex')
-    let databasePublished = false
-    try {
-      for (const file of verified.manifest.files) {
-        const input = proofPath(path.join(bundle, 'uploads'), file.id), output = proofPath(uploadDir, file.id)
-        await fs.copyFile(input, output, constants.COPYFILE_EXCL)
-        await fs.chmod(output, 0o600)
-        if (await digest(output) !== file.sha256) fail('恢复材料校验失败')
-      }
-      const source = new DatabaseSync(verified.databasePath, { readOnly: true })
-      try { await backup(source, temporaryDatabase) } finally { source.close() }
-      const restored = new DatabaseSync(temporaryDatabase, { readOnly: true })
+  bundle = absolute(bundle, '备份目录')
+  return withVerifiedBundle(bundle, async verified => {
+    await fs.mkdir(path.dirname(dbPath), { recursive: true, mode: 0o700 })
+    await fs.mkdir(path.dirname(uploadDir), { recursive: true, mode: 0o700 })
+    return withMaintenanceLock(dbPath, async () => {
+      if (await exists(dbPath) || await exists(uploadDir)) fail('恢复目标已存在')
+      await fs.mkdir(uploadDir, { mode: 0o700 })
+      const temporaryDatabase = dbPath + '.restore-' + crypto.randomBytes(8).toString('hex')
+      let databasePublished = false
       try {
-        integrity(restored)
-        const rows = proofRows(restored), expected = new Map(verified.manifest.files.map(file => [file.id, file.bytes]))
-        if (rows.length !== expected.size || rows.some(row => expected.get(row.id) !== row.bytes)) fail('恢复数据库与材料清单不一致')
-      } finally { restored.close() }
-      await fs.chmod(temporaryDatabase, 0o600)
-      // link 创建目标时具有排他性，即使目标在预检后出现也不覆盖。
-      await fs.link(temporaryDatabase, dbPath)
-      databasePublished = true
-      await fs.unlink(temporaryDatabase)
-      return { database: dbPath, uploads: uploadDir, files: verified.files }
-    } catch (error) {
-      await fs.unlink(temporaryDatabase).catch(failure => { if (failure.code !== 'ENOENT') throw failure })
-      if (!databasePublished) await fs.rm(uploadDir, { recursive: true, force: true })
-      throw error
-    }
+        for (const file of verified.manifest.files) {
+          const input = proofPath(path.join(bundle, 'uploads'), file.id), output = proofPath(uploadDir, file.id)
+          await fs.copyFile(input, output, constants.COPYFILE_EXCL)
+          await fs.chmod(output, 0o600)
+          if (await digest(output) !== file.sha256) fail('恢复材料校验失败')
+        }
+        // 恢复消费刚刚核验的相同字节，不重新打开可能已被替换的备份源库。
+        await fs.copyFile(verified.databasePath, temporaryDatabase, constants.COPYFILE_EXCL)
+        const restored = new DatabaseSync(temporaryDatabase, { readOnly: true })
+        try {
+          integrity(restored)
+          const rows = proofRows(restored), expected = new Map(verified.manifest.files.map(file => [file.id, file.bytes]))
+          if (rows.length !== expected.size || rows.some(row => expected.get(row.id) !== row.bytes)) fail('恢复数据库与材料清单不一致')
+        } finally { restored.close() }
+        await fs.chmod(temporaryDatabase, 0o600)
+        if ((await fs.stat(temporaryDatabase)).size !== verified.manifest.database.bytes || await digest(temporaryDatabase) !== verified.manifest.database.sha256) fail('恢复数据库校验值不匹配')
+        // link 创建目标时具有排他性，即使目标在预检后出现也不覆盖。
+        await fs.link(temporaryDatabase, dbPath)
+        databasePublished = true
+        await fs.unlink(temporaryDatabase)
+        return { database: dbPath, uploads: uploadDir, files: verified.files }
+      } catch (error) {
+        await fs.unlink(temporaryDatabase).catch(failure => { if (failure.code !== 'ENOENT') throw failure })
+        if (!databasePublished) await fs.rm(uploadDir, { recursive: true, force: true })
+        throw error
+      }
+    })
   })
 }
 async function restoreTrashFile(root, trash, id) {
