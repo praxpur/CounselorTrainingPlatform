@@ -87,6 +87,9 @@
           data-field="capacity"
           bindinput="input"
         />
+        <view class="field-label">是否设置签到</view>
+        <switch checked="{{form.attendanceEnabled}}" data-field="attendanceEnabled" bindchange="input" />
+        <view class="muted">开启后，请在活动管理中设置并开放签到；管理员仍需确认参加后认定学时。</view>
         <button
           class="primary"
           bindtap="save"

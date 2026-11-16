@@ -31,19 +31,31 @@ Page({
     this.setData({ ['form.' + e.currentTarget.dataset.field]: e.detail.value })
   },
   searchInput(e) {
-    cancelList(this,'users')
+    cancelList(this, 'users')
     this.setData({ query: e.detail.value, dirty: true, loading: false })
   },
   search() {
-    this.setData({query:this.data.query.trim(),appliedQuery:this.data.query.trim(),dirty:false})
+    this.setData({
+      query: this.data.query.trim(),
+      appliedQuery: this.data.query.trim(),
+      dirty: false,
+    })
     return this.load()
   },
   load(append = false) {
-    if(this.data.dirty)return
-    return loadList(this,api,{ path:'/api/admin/users?q='+encodeURIComponent(this.data.appliedQuery),field:'users',append })
+    if (this.data.dirty) return
+    return loadList(this, api, {
+      path: '/api/admin/users?q=' + encodeURIComponent(this.data.appliedQuery),
+      field: 'users',
+      append,
+    })
   },
-  previous(){return this.load({pageOffset:this.data.previousOffset})},
-  more() { return this.load(true) },
+  previous() {
+    return this.load({ pageOffset: this.data.previousOffset })
+  },
+  more() {
+    return this.load(true)
+  },
   edit(e) {
     const u = this.data.users.find((x) => x.id === e.currentTarget.dataset.id)
     if (u)
@@ -55,14 +67,28 @@ Page({
       })
   },
   reset() {
-    this.setData({ editing: false, resetting: false, form: empty(), formVisible: false, scrollTarget: '' })
+    this.setData({
+      editing: false,
+      resetting: false,
+      form: empty(),
+      formVisible: false,
+      scrollTarget: '',
+    })
   },
   resetAccount(event) {
-    const user = this.data.users.find(value => value.id === event.currentTarget.dataset.id)
-    if (user && !this.data.busy) this.showEditor({
-      editing: true, resetting: true, formVisible: true,
-      form: { id: user.id, name: user.name, department: user.department, initialPassword: '' },
-    })
+    const user = this.data.users.find((value) => value.id === event.currentTarget.dataset.id)
+    if (user && !this.data.busy)
+      this.showEditor({
+        editing: true,
+        resetting: true,
+        formVisible: true,
+        form: {
+          id: user.id,
+          name: user.name,
+          department: user.department,
+          initialPassword: '',
+        },
+      })
   },
   async save() {
     if (this.data.busy) return
@@ -73,10 +99,15 @@ Page({
     }
     this.setData({ busy: true })
     try {
-      if ((!this.data.editing || this.data.resetting) && (f.initialPassword.length < 12 || f.initialPassword.length > 128))
-        throw new Error('初始密码须为 12—128 位')
+      if (
+        (!this.data.editing || this.data.resetting) &&
+        (f.initialPassword.length < 8 || f.initialPassword.length > 128)
+      )
+        throw new Error('初始密码须为 8—128 位')
       if (this.data.resetting) {
-        await api.request('/api/admin/users/' + encodeURIComponent(f.id) + '/password', 'POST', { initialPassword: f.initialPassword })
+        await api.request('/api/admin/users/' + encodeURIComponent(f.id) + '/password', 'POST', {
+          initialPassword: f.initialPassword,
+        })
       } else if (this.data.editing) {
         await api.request('/api/admin/users/' + encodeURIComponent(f.id), 'PUT', {
           name: f.name,

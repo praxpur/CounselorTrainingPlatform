@@ -4,7 +4,7 @@ const { sendWorkbook, assertExportAvailable } = require('./exports')
 const { personalRecords, personalAnnual } = require('./personal')
 const { createAuthentication } = require('./auth')
 const { migrateCreditUnits } = require('./credit-unit')
-const { ensureRegistrationSchema,createRegistration } = require('./registration')
+const { ensureRegistrationSchema, createRegistration } = require('./registration')
 const { importRoster, resetPassword } = require('./roster')
 const { createAttendance } = require('./attendance')
 const { createEvidence, proofList } = require('./evidence')
@@ -15,6 +15,7 @@ const { pageQuery, mapPage, boundedRows } = require('./pagination')
 const crypto = require('node:crypto')
 const fs = require('node:fs/promises')
 const { DatabaseSync } = require('node:sqlite')
+// 数据库路径由启动环境指定；未指定时使用 server 目录下的 training.db。
 const db = new DatabaseSync(
   process.env.DB_PATH || require('node:path').join(__dirname, 'training.db'),
 )
@@ -46,13 +47,14 @@ CREATE INDEX IF NOT EXISTS activity_start ON activities(starts_at);`)
 const all = (sql, ...args) => statement(sql).all(...args)
 const run = (sql, ...args) => statement(sql).run(...args)
 const fail = (status, message) => {
-  const e = new Error(message)
-  e.status = status
-  throw e
+  const error = new Error(message)
+  error.status = status
+  throw error
 }
 const send = (res, status, value) => {
-  const json=JSON.stringify(value)
-  if(Buffer.byteLength(json,'utf8')>1024*1024)fail(413,'响应数据较大，请使用分页或缩小查询范围')
+  const json = JSON.stringify(value)
+  if (Buffer.byteLength(json, 'utf8') > 1024 * 1024)
+    fail(413, '响应数据较大，请使用分页或缩小查询范围')
   res.writeHead(status, {
     'Content-Type': 'application/json; charset=utf-8',
     'Cache-Control': 'no-store',
@@ -63,11 +65,20 @@ const send = (res, status, value) => {
 const hash = (value) => crypto.createHash('sha256').update(value).digest('hex')
 const authentication = createAuthentication(db)
 const attendance = createAttendance(db)
+// 旧活动已有签到设置时保留原行为，其余旧活动默认不需要签到。
+if (!db.prepare('PRAGMA table_info(activities)').all().some((column) => column.name === 'attendance_enabled')) {
+  db.exec(`BEGIN IMMEDIATE;
+    ALTER TABLE activities ADD COLUMN attendance_enabled INTEGER NOT NULL DEFAULT 0;
+    UPDATE activities SET attendance_enabled=1 WHERE EXISTS
+      (SELECT 1 FROM attendance_sessions s WHERE s.activity_id=activities.id);
+    COMMIT;`)
+}
 const evidence = createEvidence(db)
 const notifications = createNotifications(db)
 evidence.preserveExistingProofs()
 const statistics = createStatistics(db)
 const registration = createRegistration(db)
+// 限制 JSON 请求体大小，并在异步接收结束后重新检查登录状态。
 function body(req) {
   return new Promise((resolve, reject) => {
     const chunks = []
@@ -125,12 +136,14 @@ function requireUser(req) {
 function admin(user) {
   if (user.role !== 'admin') fail(403, '无管理员权限')
 }
-// Mutations must authorize after acquiring the database write lock: another process
-// may revoke a session while BEGIN IMMEDIATE is waiting.
+// 必须取得写锁后再检查权限：等待数据库锁期间，会话或管理员权限可能被撤销。
 function authorizeMutation(req, administrator = false) {
   const user = requireUser(req)
   if (administrator) admin(user)
-  if (!['/api/me', '/api/logout'].includes(new URL(req.url, 'http://localhost').pathname) && authentication.mustChange(user.id))
+  if (
+    !['/api/me', '/api/logout'].includes(new URL(req.url, 'http://localhost').pathname) &&
+    authentication.mustChange(user.id)
+  )
     fail(403, '请先修改初始密码')
   return user
 }
@@ -140,7 +153,10 @@ function write(req, administrator, action) {
     const result = action(authorizeMutation(req, administrator))
     db.exec('COMMIT')
     return result
-  } catch (error) { db.exec('ROLLBACK'); throw error }
+  } catch (error) {
+    db.exec('ROLLBACK')
+    throw error
+  }
 }
 function activityTime(value) {
   if (
@@ -164,6 +180,8 @@ function activityTime(value) {
   return Date.parse(value)
 }
 function activityInput(input) {
+  if (input.attendanceEnabled !== undefined && typeof input.attendanceEnabled !== 'boolean')
+    fail(400, '签到选项无效')
   if (
     typeof input.title !== 'string' ||
     (input.description != null && typeof input.description !== 'string') ||
@@ -199,7 +217,8 @@ function activityInput(input) {
       capacityValue !== null &&
       capacityValue !== '') ||
     capacity > 100000 ||
-    !Number.isFinite(hours) || Math.abs(hours * 100 - Math.round(hours * 100)) > 1e-7 ||
+    !Number.isFinite(hours) ||
+    Math.abs(hours * 100 - Math.round(hours * 100)) > 1e-7 ||
     !numeric(input.creditHours) ||
     input.creditHours === undefined ||
     input.creditHours === null ||
@@ -210,6 +229,7 @@ function activityInput(input) {
     fail(400, '请填写活动名称、有效起止时间和学时；人数上限如填写须为正整数')
   return [title, description, location, starts, ends, capacity, hours]
 }
+// 将数据库字段转换为小程序接口字段。
 function dto(a) {
   return {
     id: a.id,
@@ -220,6 +240,7 @@ function dto(a) {
     endsAt: a.ends_at,
     capacity: a.capacity === 0 ? null : a.capacity,
     creditHours: a.credit_hours,
+    attendanceEnabled: Boolean(a.attendance_enabled),
     status: a.status,
     registeredCount: a.registered_count,
     registered: !!a.registered,
@@ -254,11 +275,12 @@ function activityList(user, where, args, order, url) {
     LEFT JOIN (SELECT activity_id,COUNT(*) registered_count FROM registrations WHERE cancelled_at IS NULL GROUP BY activity_id) counts ON counts.activity_id=a.id
     LEFT JOIN registrations own ON own.activity_id=a.id AND own.user_id=?
     WHERE ${where} ORDER BY ${order}`
-  return mapPage(pageQuery(db,sql,[user.id,...args],url),dto)
+  return mapPage(pageQuery(db, sql, [user.id, ...args], url), dto)
 }
 function ranking(url, exporting = false) {
   const year = readYear(url)
-  const start = Date.parse(year + '-01-01T00:00:00+08:00'), end = Date.parse((year+1) + '-01-01T00:00:00+08:00')
+  const start = Date.parse(year + '-01-01T00:00:00+08:00'),
+    end = Date.parse(year + 1 + '-01-01T00:00:00+08:00')
   const sql = `WITH p AS (
     SELECT r.user_id,COUNT(*) events,SUM(r.credited_hours) hours FROM registrations r JOIN activities a ON a.id=r.activity_id
     WHERE r.confirmed_at IS NOT NULL AND r.cancelled_at IS NULL AND a.status='published' AND a.starts_at>=? AND a.starts_at<? GROUP BY r.user_id
@@ -271,16 +293,30 @@ function ranking(url, exporting = false) {
     FROM users u LEFT JOIN p ON p.user_id=u.id LEFT JOIN e ON e.user_id=u.id WHERE u.role='counselor'
   ), ranked AS (SELECT *,RANK() OVER(ORDER BY totalHours DESC) rank FROM totals)
   SELECT * FROM ranked ORDER BY totalHours DESC,id`
-  const result = pageQuery(db,sql,[start,end,year+'-01-01',(year+1)+'-01-01'],url,{ exporting })
-  return { year,...(Array.isArray(result) ? { rows: result } : result) }
+  const result = pageQuery(db, sql, [start, end, year + '-01-01', year + 1 + '-01-01'], url, {
+    exporting,
+  })
+  return { year, ...(Array.isArray(result) ? { rows: result } : result) }
 }
 function withExternalCounts(rows) {
   if (!rows.length) return rows
-  const ids = rows.map(row => row.id)
-  const counts = new Map(all("SELECT user_id,COUNT(*) submitted,SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) approved FROM external_trainings WHERE user_id IN ("+ids.map(()=>'?').join(',')+") GROUP BY user_id",...ids).map(row=>[row.user_id,row]))
-  return rows.map(row=>({ ...row,externalSubmittedCount:counts.get(row.id)?.submitted||0,externalApprovedCount:counts.get(row.id)?.approved||0 }))
+  const ids = rows.map((row) => row.id)
+  const counts = new Map(
+    all(
+      "SELECT user_id,COUNT(*) submitted,SUM(CASE WHEN status='approved' THEN 1 ELSE 0 END) approved FROM external_trainings WHERE user_id IN (" +
+        ids.map(() => '?').join(',') +
+        ') GROUP BY user_id',
+      ...ids,
+    ).map((row) => [row.user_id, row]),
+  )
+  return rows.map((row) => ({
+    ...row,
+    externalSubmittedCount: counts.get(row.id)?.submitted || 0,
+    externalApprovedCount: counts.get(row.id)?.approved || 0,
+  }))
 }
 
+// HTTP 入口：解析请求，再按路径和方法交给对应业务模块处理。
 const server = http.createServer(async (req, res) => {
   try {
     let url
@@ -300,89 +336,79 @@ const server = http.createServer(async (req, res) => {
     if (path === '/api/auth/password' && method === 'POST') {
       const user = requireUser(req)
       const input = await body(req)
-      const result = await authentication.changePassword(user, input, clientIp(req), () => requireUser(req))
+      const result = await authentication.changePassword(user, input, clientIp(req), () =>
+        requireUser(req),
+      )
       return send(res, 200, result)
-    }
-    // This is deliberately disabled in production. Replace with a verified school identity exchange.
-    if (path === '/api/auth/dev' && method === 'POST') {
-      if (process.env.NODE_ENV === 'production' || process.env.ENABLE_DEV_LOGIN !== '1')
-        fail(404, '接口不存在')
-      const b = await body(req),
-        id = String(b.id || '').trim(),
-        name = String(b.name || '').trim(),
-        department = String(b.department || '').trim()
-      if (!/^[a-zA-Z0-9_-]{1,40}$/.test(id) || !name || name.length > 50 || department.length > 100)
-        fail(400, '请填写有效的测试工号和姓名')
-      const role = id === process.env.DEV_ADMIN_ID ? 'admin' : 'counselor'
-      db.exec('BEGIN IMMEDIATE')
-      try {
-        const existing = get('SELECT * FROM users WHERE id=?', id)
-        if (existing && !existing.enabled) fail(403, '该用户已停用')
-        if (existing && existing.name !== name) fail(403, '工号与姓名不匹配，请核对后重试')
-        if ((!existing || !existing.department) && !department) {
-          db.exec('COMMIT')
-          return send(res, 422, { error: '首次登录，请补充学院或部门', code: 'DEPARTMENT_REQUIRED' })
-        }
-        if (!existing)
-          run(
-            'INSERT INTO users(id,name,department,role) VALUES(?,?,?,?)',
-            id,
-            name,
-            department,
-            role,
-          )
-        else if (!existing.department) run('UPDATE users SET department=? WHERE id=?', department, id)
-        const token = crypto.randomBytes(32).toString('hex')
-        run('DELETE FROM sessions WHERE expires<=?', Date.now())
-        run('INSERT INTO sessions VALUES(?,?,?)', hash(token), id, Date.now() + 8 * 3600000)
-        const user = get('SELECT id,name,department,role FROM users WHERE id=?', id)
-        db.exec('COMMIT')
-        return send(res, 200, { token, user })
-      } catch (error) { db.exec('ROLLBACK'); throw error }
     }
     if (path.startsWith('/api/auth/')) fail(404, '接口不存在')
     const u = requireUser(req)
     if (!['/api/me', '/api/logout'].includes(path) && authentication.mustChange(u.id))
       return send(res, 403, { error: '请先修改初始密码', code: 'PASSWORD_CHANGE_REQUIRED' })
-    if (method === 'GET' && ['/api/my/exports/annual','/api/admin/exports/people','/api/admin/exports/ranking','/api/admin/exports/statistics'].includes(path)) {
+    if (
+      method === 'GET' &&
+      [
+        '/api/my/exports/annual',
+        '/api/admin/exports/people',
+        '/api/admin/exports/ranking',
+        '/api/admin/exports/statistics',
+      ].includes(path)
+    ) {
       if (path.startsWith('/api/admin/')) admin(u)
       assertExportAvailable()
     }
     if (path === '/api/admin/statistics' && method === 'GET') {
       admin(u)
-      return send(res,200,statistics.summary(url))
+      return send(res, 200, statistics.summary(url))
     }
     if (path === '/api/admin/statistics/records' && method === 'GET') {
       admin(u)
-      return send(res,200,statistics.records(url))
+      return send(res, 200, statistics.records(url))
     }
     if (path === '/api/admin/exports/statistics' && method === 'GET') {
       admin(u)
-      const report=statistics.exportSheets(url)
-      return await sendWorkbook(res,report.filename,report.sheets)
+      const report = statistics.exportSheets(url)
+      return await sendWorkbook(res, report.filename, report.sheets)
     }
-    if(path==='/api/notifications'&&method==='GET')return send(res,200,notifications.list(u,url))
-    if(path==='/api/notifications/unread-count'&&method==='GET')return send(res,200,{unreadCount:notifications.unreadCount(u)})
-    if(path==='/api/notifications/read-all'&&method==='POST'){
+    if (path === '/api/notifications' && method === 'GET')
+      return send(res, 200, notifications.list(u, url))
+    if (path === '/api/notifications/unread-count' && method === 'GET')
+      return send(res, 200, { unreadCount: notifications.unreadCount(u) })
+    if (path === '/api/notifications/read-all' && method === 'POST') {
       await body(req)
-      return send(res,200,write(req, false, user => notifications.readAll(user)))
+      return send(
+        res,
+        200,
+        write(req, false, (user) => notifications.readAll(user)),
+      )
     }
-    const notificationMatch=path.match(/^\/api\/notifications\/([1-9]\d*)\/read$/)
-    if(notificationMatch&&method==='POST'){
+    const notificationMatch = path.match(/^\/api\/notifications\/([1-9]\d*)\/read$/)
+    if (notificationMatch && method === 'POST') {
       await body(req)
-      return send(res,200,write(req, false, user => notifications.read(user,notificationMatch[1])))
+      return send(
+        res,
+        200,
+        write(req, false, (user) => notifications.read(user, notificationMatch[1])),
+      )
     }
     if (path === '/api/proofs' && method === 'POST')
       return send(res, 201, await evidence.upload(req, u, () => authorizeMutation(req)))
     const proofMatch = path.match(/^\/api\/proofs\/([a-f0-9]{48})$/)
     if (proofMatch && method === 'GET') {
       const file = await evidence.download(proofMatch[1], u, () => authorizeMutation(req))
-      res.once('finish',file.release)
-      res.once('close',file.release)
-      if(res.destroyed){file.release();return}
-      res.writeHead(200, { 'Content-Type': file.mimeType, 'Content-Length': file.buffer.length,
+      res.once('finish', file.release)
+      res.once('close', file.release)
+      if (res.destroyed) {
+        file.release()
+        return
+      }
+      res.writeHead(200, {
+        'Content-Type': file.mimeType,
+        'Content-Length': file.buffer.length,
         'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(file.name),
-        'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' })
+        'Cache-Control': 'no-store',
+        'X-Content-Type-Options': 'nosniff',
+      })
       return res.end(file.buffer)
     }
     const externalMatch = path.match(/^\/api\/my\/external-trainings(?:\/(\d+))?$/)
@@ -391,7 +417,11 @@ const server = http.createServer(async (req, res) => {
       if (id !== null && (!Number.isSafeInteger(id) || id <= 0)) fail(400, '记录编号无效')
       if (method === 'GET' && id) return send(res, 200, evidence.getExternal(id, u))
       if ((method === 'POST' && !id) || (method === 'PUT' && id))
-        return send(res, method === 'POST' ? 201 : 200, evidence.submitExternal(id, await body(req), u, () => authorizeMutation(req)))
+        return send(
+          res,
+          method === 'POST' ? 201 : 200,
+          evidence.submitExternal(id, await body(req), u, () => authorizeMutation(req)),
+        )
       fail(404, '接口不存在')
     }
     if (path === '/api/admin/external-trainings' && method === 'GET') {
@@ -400,28 +430,51 @@ const server = http.createServer(async (req, res) => {
     }
     if (path === '/api/admin/reviews' && method === 'GET') {
       admin(u)
-      return send(res,200,evidence.combinedReviews(url))
+      return send(res, 200, evidence.combinedReviews(url))
     }
     const externalReviewMatch = path.match(/^\/api\/admin\/external-trainings\/(\d+)\/review$/)
     if (externalReviewMatch && method === 'POST') {
       admin(u)
-      return send(res, 200, evidence.review(Number(externalReviewMatch[1]), await body(req), u, () => authorizeMutation(req, true)))
+      return send(
+        res,
+        200,
+        evidence.review(Number(externalReviewMatch[1]), await body(req), u, () =>
+          authorizeMutation(req, true),
+        ),
+      )
     }
-    const attendanceMatch = path.match(/^\/api\/(admin\/)?activities\/(\d+)\/attendance(?:\/(in|out))?$/)
+    const attendanceMatch = path.match(
+      /^\/api\/(admin\/)?activities\/(\d+)\/attendance(?:\/(in|out))?$/,
+    )
     if (attendanceMatch) {
-      const [, management, activityId, phase] = attendanceMatch, id = Number(activityId)
+      const [, management, activityId, phase] = attendanceMatch,
+        id = Number(activityId)
       if (!Number.isSafeInteger(id) || id <= 0) fail(400, '活动编号无效')
       if (management) {
         admin(u)
-        if (method === 'GET' && !phase) return send(res, 200, attendance.report(id,url))
+        if (method === 'GET' && !phase) return send(res, 200, attendance.report(id, url))
         if (method === 'POST' && phase) {
           const input = await body(req)
-          return send(res, 200, await attendance.open(id, phase, input, u, () => authorizeMutation(req, true)))
+          return send(
+            res,
+            200,
+            await attendance.open(id, phase, input, u, () => authorizeMutation(req, true)),
+          )
         }
-        if (method === 'DELETE' && phase) return send(res, 200, attendance.close(id, phase, () => authorizeMutation(req, true)))
+        if (method === 'DELETE' && phase)
+          return send(
+            res,
+            200,
+            attendance.close(id, phase, () => authorizeMutation(req, true)),
+          )
       } else {
         if (method === 'GET' && !phase) return send(res, 200, attendance.state(id, u))
-        if (method === 'POST' && phase) return send(res, 200, attendance.record(id, phase, await body(req), u, () => authorizeMutation(req)))
+        if (method === 'POST' && phase)
+          return send(
+            res,
+            200,
+            attendance.record(id, phase, await body(req), u, () => authorizeMutation(req)),
+          )
       }
       fail(404, '接口不存在')
     }
@@ -430,7 +483,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (['/api/my/annual', '/api/my/exports/annual'].includes(path) && method === 'GET') {
       const year = readYear(url)
-      const report = personalAnnual(db, u.id, year, { url, exporting: path === '/api/my/exports/annual' })
+      const report = personalAnnual(db, u.id, year, {
+        url,
+        exporting: path === '/api/my/exports/annual',
+      })
       if (path === '/api/my/annual') return send(res, 200, report)
       return await sendWorkbook(res, year + '-我的年度学时.xlsx', [
         {
@@ -442,7 +498,7 @@ const server = http.createServer(async (req, res) => {
             { header: '学院 / 部门', key: 'department', width: 28 },
             { header: '活动数（含自行提交和取消）', key: 'activityCount', width: 26 },
             { header: '审核通过数', key: 'approvedCount', width: 18 },
-            { header: '未审核数（含未提交）', key: 'pendingCount', width: 26 },
+            { header: '待确认 / 待审核数', key: 'pendingCount', width: 26 },
             { header: '驳回数', key: 'rejectedCount', width: 12 },
             { header: '取消数', key: 'cancelledCount', width: 12 },
             { header: '认定学时', key: 'totalHours', width: 24 },
@@ -483,21 +539,40 @@ const server = http.createServer(async (req, res) => {
     }
     if (path === '/api/me' && method === 'GET') return send(res, 200, u)
     if (path === '/api/logout' && method === 'POST') {
-      write(req, false, () => run('DELETE FROM sessions WHERE token_hash=?', hash(req.headers.authorization.slice(7))))
+      write(req, false, () =>
+        run('DELETE FROM sessions WHERE token_hash=?', hash(req.headers.authorization.slice(7))),
+      )
       return send(res, 200, { ok: true })
     }
     if (path === '/api/admin/users' && method === 'GET') {
       admin(u)
-      const q = String(url.searchParams.get('q') || '').trim().slice(0,100)
-      return send(res,200,pageQuery(db,
-        "SELECT id,name,department,enabled FROM users WHERE role='counselor' AND (instr(id,?)>0 OR instr(name,?)>0 OR instr(department,?)>0) ORDER BY enabled DESC,department,name,id",[q,q,q],url))
+      const q = String(url.searchParams.get('q') || '')
+        .trim()
+        .slice(0, 100)
+      return send(
+        res,
+        200,
+        pageQuery(
+          db,
+          "SELECT id,name,department,enabled FROM users WHERE role='counselor' AND (instr(id,?)>0 OR instr(name,?)>0 OR instr(department,?)>0) ORDER BY enabled DESC,department,name,id",
+          [q, q, q],
+          url,
+        ),
+      )
     }
     if (path === '/api/admin/users' && method === 'POST') {
       admin(u)
       const b = await body(req)
       if (b.initialPassword !== undefined || process.env.NODE_ENV === 'production') {
-        await importRoster(db, [{ ...b, role: 'counselor' }], { authorize: () => authorizeMutation(req, true) })
-        return send(res, 201, { id: b.id, name: b.name, department: b.department, enabled: 1 })
+        await importRoster(db, [{ ...b, role: 'counselor' }], {
+          authorize: () => authorizeMutation(req, true),
+        })
+        return send(res, 201, {
+          id: b.id,
+          name: b.name,
+          department: b.department,
+          enabled: 1,
+        })
       }
       const id = String(b.id || '').trim(),
         name = String(b.name || '').trim(),
@@ -511,7 +586,7 @@ const server = http.createServer(async (req, res) => {
       )
         fail(400, '请填写有效工号、姓名和部门')
       write(req, true, () => {
-        if (id === process.env.DEV_ADMIN_ID || get('SELECT id FROM users WHERE id=?', id))
+        if (get('SELECT id FROM users WHERE id=?', id))
           fail(409, '该工号已存在或已保留')
         run(
           "INSERT INTO users(id,name,department,role) VALUES(?,?,?,'counselor')",
@@ -526,13 +601,18 @@ const server = http.createServer(async (req, res) => {
       admin(u)
       const b = await body(req)
       if (!Array.isArray(b.rows) || b.rows.length > 50) fail(400, '每批最多导入 50 人')
-      return send(res, 201, await importRoster(db, b.rows, { authorize: () => authorizeMutation(req, true) }))
+      return send(
+        res,
+        201,
+        await importRoster(db, b.rows, { authorize: () => authorizeMutation(req, true) }),
+      )
     }
     const resetMatch = path.match(/^\/api\/admin\/users\/([a-zA-Z0-9_-]{1,40})\/password$/)
     if (resetMatch && method === 'POST') {
       const authorize = () => {
         authorizeMutation(req, true)
-        if (!get("SELECT id FROM users WHERE id=? AND role='counselor'", resetMatch[1])) fail(404, '辅导员不存在')
+        if (!get("SELECT id FROM users WHERE id=? AND role='counselor'", resetMatch[1]))
+          fail(404, '辅导员不存在')
       }
       authorize()
       const b = await body(req)
@@ -570,34 +650,36 @@ const server = http.createServer(async (req, res) => {
       return send(res, 200, result)
     }
     if (path === '/api/experiences' && method === 'GET')
-      return send(res,200,pageQuery(db,'SELECT id,activity_id activityId,title,description,status,credit_hours creditHours,review_note reviewNote FROM experiences WHERE user_id=? AND activity_id IS NOT NULL ORDER BY created_at DESC,id DESC',[u.id],url))
-    if (path === '/api/experiences' && method === 'POST') {
-      const b = await body(req),
-        id = Number(b.activityId),
-        description = String(b.description || '').trim()
-      if (!Number.isInteger(id) || !description || description.length > 2000)
-        fail(400, '请选择活动并填写培训经历')
-      const a = activity(id, u)
-      if (!a.registered || a.status !== 'published')
-        fail(409, '只能提交已报名且未取消活动的培训经历')
-      if (a.starts_at > Date.now()) fail(409, '活动尚未开始，请参加后再提交培训经历')
-      if (
-        get(
-          "SELECT id FROM experiences WHERE user_id=? AND activity_id=? AND status IN ('pending','approved')",
-          u.id,
-          id,
-        )
+      return send(
+        res,
+        200,
+        pageQuery(
+          db,
+          'SELECT id,activity_id activityId,title,description,status,credit_hours creditHours,review_note reviewNote FROM experiences WHERE user_id=? AND activity_id IS NOT NULL ORDER BY created_at DESC,id DESC',
+          [u.id],
+          url,
+        ),
       )
-        fail(409, '该活动已有待审核或已通过的经历')
-      return send(res, 201, evidence.createExperience(a, u, description, b.proofIds, () => authorizeMutation(req)))
-    }
     if (path === '/api/admin/experiences' && method === 'GET') {
       admin(u)
       const status = url.searchParams.get('status')
-      if (status && !['pending','approved','rejected'].includes(status)) fail(400,'审核状态无效')
-      const result = pageQuery(db,
-        "SELECT e.id,e.activity_id activityId,e.title,e.description,e.status,e.credit_hours creditHours,e.review_note reviewNote,u.name,u.department,u.id userId FROM experiences e JOIN users u ON e.user_id=u.id WHERE e.activity_id IS NOT NULL" + (status ? ' AND e.status=?' : '') + " ORDER BY CASE WHEN e.status='pending' THEN 0 ELSE 1 END,e.created_at DESC,e.id DESC",status ? [status] : [],url)
-      return send(res,200,mapPage(result,record => ({ ...record,proofs:proofList(db,'experience_id',record.id) })))
+      if (status && !['pending', 'approved', 'rejected'].includes(status)) fail(400, '审核状态无效')
+      const result = pageQuery(
+        db,
+        'SELECT e.id,e.activity_id activityId,e.title,e.description,e.status,e.credit_hours creditHours,e.review_note reviewNote,u.name,u.department,u.id userId FROM experiences e JOIN users u ON e.user_id=u.id WHERE e.activity_id IS NOT NULL' +
+          (status ? ' AND e.status=?' : '') +
+          " ORDER BY CASE WHEN e.status='pending' THEN 0 ELSE 1 END,e.created_at DESC,e.id DESC",
+        status ? [status] : [],
+        url,
+      )
+      return send(
+        res,
+        200,
+        mapPage(result, (record) => ({
+          ...record,
+          proofs: proofList(db, 'experience_id', record.id),
+        })),
+      )
     }
     const reviewMatch = path.match(/^\/api\/admin\/experiences\/(\d+)\/review$/)
     if (reviewMatch && method === 'POST') {
@@ -614,7 +696,10 @@ const server = http.createServer(async (req, res) => {
       db.exec('BEGIN IMMEDIATE')
       try {
         authorizeMutation(req, true)
-        const exp = get('SELECT * FROM experiences WHERE id=? AND activity_id IS NOT NULL', Number(reviewMatch[1]))
+        const exp = get(
+          'SELECT * FROM experiences WHERE id=? AND activity_id IS NOT NULL',
+          Number(reviewMatch[1]),
+        )
         if (!exp || exp.status !== 'pending') fail(409, '记录不存在或已审核')
         const a = activity(exp.activity_id, { id: exp.user_id })
         if (status === 'approved') {
@@ -672,8 +757,17 @@ const server = http.createServer(async (req, res) => {
       )
     }
     if (path === '/api/records' && method === 'GET') {
-      const rows = pageQuery(db,'SELECT activity_id FROM registrations WHERE user_id=? ORDER BY registered_at DESC,activity_id DESC',[u.id],url)
-      return send(res,200,mapPage(rows,row=>dto(activity(row.activity_id,u))))
+      const rows = pageQuery(
+        db,
+        'SELECT activity_id FROM registrations WHERE user_id=? ORDER BY registered_at DESC,activity_id DESC',
+        [u.id],
+        url,
+      )
+      return send(
+        res,
+        200,
+        mapPage(rows, (row) => dto(activity(row.activity_id, u))),
+      )
     }
     if (path === '/api/admin/ranking' && method === 'GET') {
       admin(u)
@@ -684,7 +778,9 @@ const server = http.createServer(async (req, res) => {
       return send(
         res,
         200,
-        get("SELECT (SELECT COUNT(*) FROM experiences WHERE activity_id IS NOT NULL AND status='pending') + (SELECT COUNT(*) FROM external_trainings WHERE status='pending') pendingCount"),
+        get(
+          "SELECT (SELECT COUNT(*) FROM experiences WHERE activity_id IS NOT NULL AND status='pending') + (SELECT COUNT(*) FROM external_trainings WHERE status='pending') pendingCount",
+        ),
       )
     }
     if (path === '/api/admin/exports/ranking' && method === 'GET') {
@@ -708,28 +804,110 @@ const server = http.createServer(async (req, res) => {
     if (path === '/api/admin/exports/people' && method === 'GET') {
       admin(u)
       const userId = url.searchParams.get('id')
-      if (userId && (!/^[a-zA-Z0-9_-]{1,40}$/.test(userId) || !get("SELECT id FROM users WHERE id=? AND role='counselor'",userId))) fail(404,'辅导员不存在')
+      if (
+        userId &&
+        (!/^[a-zA-Z0-9_-]{1,40}$/.test(userId) ||
+          !get("SELECT id FROM users WHERE id=? AND role='counselor'", userId))
+      )
+        fail(404, '辅导员不存在')
       const year = url.searchParams.has('year') ? readYear(url) : null
-      const q=String(url.searchParams.get('q')||'').trim().slice(0,100)
-      const detailFilters = [], detailArgs = [], externalFilters = [], externalArgs = []
-      if (userId) { detailFilters.push('u.id=?');detailArgs.push(userId);externalFilters.push('u.id=?');externalArgs.push(userId) }
-      if(q){const search='(instr(lower(u.id),lower(?))>0 OR instr(lower(u.name),lower(?))>0 OR instr(lower(u.department),lower(?))>0)';detailFilters.push(search);detailArgs.push(q,q,q);externalFilters.push(search);externalArgs.push(q,q,q)}
+      const q = String(url.searchParams.get('q') || '')
+        .trim()
+        .slice(0, 100)
+      const detailFilters = [],
+        detailArgs = [],
+        externalFilters = [],
+        externalArgs = []
+      if (userId) {
+        detailFilters.push('u.id=?')
+        detailArgs.push(userId)
+        externalFilters.push('u.id=?')
+        externalArgs.push(userId)
+      }
+      if (q) {
+        const search =
+          '(instr(lower(u.id),lower(?))>0 OR instr(lower(u.name),lower(?))>0 OR instr(lower(u.department),lower(?))>0)'
+        detailFilters.push(search)
+        detailArgs.push(q, q, q)
+        externalFilters.push(search)
+        externalArgs.push(q, q, q)
+      }
       if (year) {
         detailFilters.push('a.starts_at>=? AND a.starts_at<?')
-        detailArgs.push(Date.parse(year+'-01-01T00:00:00+08:00'),Date.parse((year+1)+'-01-01T00:00:00+08:00'))
-        externalFilters.push('e.occurred_on>=? AND e.occurred_on<?');externalArgs.push(year+'-01-01',(year+1)+'-01-01')
+        detailArgs.push(
+          Date.parse(year + '-01-01T00:00:00+08:00'),
+          Date.parse(year + 1 + '-01-01T00:00:00+08:00'),
+        )
+        externalFilters.push('e.occurred_on>=? AND e.occurred_on<?')
+        externalArgs.push(year + '-01-01', year + 1 + '-01-01')
       }
-      const details = boundedRows(db,
-        "SELECT u.id,u.name,u.department,a.title,a.starts_at startsAt,a.location,a.status,r.registered_at registeredAt,r.confirmed_at confirmedAt,r.cancelled_at withdrawnAt,r.credited_hours creditedHours FROM registrations r JOIN users u ON u.id=r.user_id JOIN activities a ON a.id=r.activity_id WHERE u.role='counselor'"+(detailFilters.length?' AND '+detailFilters.join(' AND '):'')+' ORDER BY u.department,u.id,a.starts_at,a.id',detailArgs,10000,true)
-      const externalRows = boundedRows(db,
-        "SELECT u.id,u.name,u.department,e.title,e.organizer,e.occurred_on occurredOn,e.requested_hours requestedHours,e.credited_hours creditHours,e.status,e.review_note reviewNote FROM external_trainings e JOIN users u ON u.id=e.user_id WHERE u.role='counselor'"+(externalFilters.length?' AND '+externalFilters.join(' AND '):'')+' ORDER BY e.occurred_on DESC,e.id DESC',externalArgs,10000,true)
-      const userFilters=[],userArgs=[]
-      if(userId){userFilters.push('id=?');userArgs.push(userId)}
-      if(q){userFilters.push('(instr(lower(id),lower(?))>0 OR instr(lower(name),lower(?))>0 OR instr(lower(department),lower(?))>0)');userArgs.push(q,q,q)}
-      const users=boundedRows(db,"SELECT id,name,department FROM users WHERE role='counselor'"+(userFilters.length?' AND '+userFilters.join(' AND '):'')+' ORDER BY department,name,id',userArgs,10000,true)
-      const byUser = new Map(users.map(row=>[row.id,{ ...row,registeredCount:0,confirmedCount:0,historicalRegisteredCount:0,withdrawnCount:0,externalSubmittedCount:0,externalApprovedCount:0 }]))
-      for (const row of details) { const target=byUser.get(row.id);target.historicalRegisteredCount++;if(row.withdrawnAt)target.withdrawnCount++;else{target.registeredCount++;if(row.confirmedAt)target.confirmedCount++} }
-      for (const row of externalRows) { const target=byUser.get(row.id);target.externalSubmittedCount++;if(row.status==='approved')target.externalApprovedCount++ }
+      const details = boundedRows(
+        db,
+        "SELECT u.id,u.name,u.department,a.title,a.starts_at startsAt,a.location,a.status,r.registered_at registeredAt,r.confirmed_at confirmedAt,r.cancelled_at withdrawnAt,r.credited_hours creditedHours FROM registrations r JOIN users u ON u.id=r.user_id JOIN activities a ON a.id=r.activity_id WHERE u.role='counselor'" +
+          (detailFilters.length ? ' AND ' + detailFilters.join(' AND ') : '') +
+          ' ORDER BY u.department,u.id,a.starts_at,a.id',
+        detailArgs,
+        10000,
+        true,
+      )
+      const externalRows = boundedRows(
+        db,
+        "SELECT u.id,u.name,u.department,e.title,e.organizer,e.occurred_on occurredOn,e.requested_hours requestedHours,e.credited_hours creditHours,e.status,e.review_note reviewNote FROM external_trainings e JOIN users u ON u.id=e.user_id WHERE u.role='counselor'" +
+          (externalFilters.length ? ' AND ' + externalFilters.join(' AND ') : '') +
+          ' ORDER BY e.occurred_on DESC,e.id DESC',
+        externalArgs,
+        10000,
+        true,
+      )
+      const userFilters = [],
+        userArgs = []
+      if (userId) {
+        userFilters.push('id=?')
+        userArgs.push(userId)
+      }
+      if (q) {
+        userFilters.push(
+          '(instr(lower(id),lower(?))>0 OR instr(lower(name),lower(?))>0 OR instr(lower(department),lower(?))>0)',
+        )
+        userArgs.push(q, q, q)
+      }
+      const users = boundedRows(
+        db,
+        "SELECT id,name,department FROM users WHERE role='counselor'" +
+          (userFilters.length ? ' AND ' + userFilters.join(' AND ') : '') +
+          ' ORDER BY department,name,id',
+        userArgs,
+        10000,
+        true,
+      )
+      const byUser = new Map(
+        users.map((row) => [
+          row.id,
+          {
+            ...row,
+            registeredCount: 0,
+            confirmedCount: 0,
+            historicalRegisteredCount: 0,
+            withdrawnCount: 0,
+            externalSubmittedCount: 0,
+            externalApprovedCount: 0,
+          },
+        ]),
+      )
+      for (const row of details) {
+        const target = byUser.get(row.id)
+        target.historicalRegisteredCount++
+        if (row.withdrawnAt) target.withdrawnCount++
+        else {
+          target.registeredCount++
+          if (row.confirmedAt) target.confirmedCount++
+        }
+      }
+      for (const row of externalRows) {
+        const target = byUser.get(row.id)
+        target.externalSubmittedCount++
+        if (row.status === 'approved') target.externalApprovedCount++
+      }
       const summary = [...byUser.values()]
       const formatTime = (value) => (value ? new Date(value + 8 * 3600000) : null)
       return await sendWorkbook(res, '人员报名情况.xlsx', [
@@ -739,7 +917,11 @@ const server = http.createServer(async (req, res) => {
             { header: '工号', key: 'id', width: 20 },
             { header: '姓名', key: 'name', width: 18 },
             { header: '学院 / 部门', key: 'department', width: 28 },
-            { header: '未取消报名活动数（含取消活动）', key: 'registeredCount', width: 28 },
+            {
+              header: '未取消报名活动数（含取消活动）',
+              key: 'registeredCount',
+              width: 28,
+            },
             { header: '已确认次数（含取消活动）', key: 'confirmedCount', width: 30 },
             { header: '历史报名活动数', key: 'historicalRegisteredCount', width: 22 },
             { header: '取消报名活动数', key: 'withdrawnCount', width: 22 },
@@ -776,32 +958,65 @@ const server = http.createServer(async (req, res) => {
             startsText: formatTime(r.startsAt),
             registeredText: formatTime(r.registeredAt),
             state:
-              r.status === 'cancelled' ? '活动已取消' : r.withdrawnAt ? '已取消报名' : r.confirmedAt ? '已确认参加' : '待确认参加',
-            hours: r.status === 'published' && r.confirmedAt && !r.withdrawnAt ? r.creditedHours : 0,
+              r.status === 'cancelled'
+                ? '活动已取消'
+                : r.withdrawnAt
+                  ? '已取消报名'
+                  : r.confirmedAt
+                    ? '已确认参加'
+                    : '待确认参加',
+            hours:
+              r.status === 'published' && r.confirmedAt && !r.withdrawnAt ? r.creditedHours : 0,
           })),
         },
-        ...(externalRows.length ? [{ name: '自行提交活动', columns: [
-          { header: '工号', key: 'id', width: 20 }, { header: '姓名', key: 'name', width: 18 },
-          { header: '学院 / 部门', key: 'department', width: 28 }, { header: '活动名称', key: 'title', width: 36 },
-          { header: '主办方', key: 'organizer', width: 28 }, { header: '参加日期', key: 'occurredOn', width: 18 },
-          { header: '申请学时', key: 'requestedHours', width: 16 }, { header: '认定学时', key: 'creditHours', width: 16 },
-          { header: '审核状态', key: 'status', width: 18 }, { header: '审核意见', key: 'reviewNote', width: 40 },
-        ], rows: externalRows.map(row => ({ ...row, status: { pending: '待审核', approved: '已通过', rejected: '已驳回' }[row.status] })) }] : []),
+        ...(externalRows.length
+          ? [
+              {
+                name: '自行提交活动',
+                columns: [
+                  { header: '工号', key: 'id', width: 20 },
+                  { header: '姓名', key: 'name', width: 18 },
+                  { header: '学院 / 部门', key: 'department', width: 28 },
+                  { header: '活动名称', key: 'title', width: 36 },
+                  { header: '主办方', key: 'organizer', width: 28 },
+                  { header: '参加日期', key: 'occurredOn', width: 18 },
+                  { header: '申请学时', key: 'requestedHours', width: 16 },
+                  { header: '认定学时', key: 'creditHours', width: 16 },
+                  { header: '审核状态', key: 'status', width: 18 },
+                  { header: '审核意见', key: 'reviewNote', width: 40 },
+                ],
+                rows: externalRows.map((row) => ({
+                  ...row,
+                  status: {
+                    pending: '待审核',
+                    approved: '已通过',
+                    rejected: '已驳回',
+                  }[row.status],
+                })),
+              },
+            ]
+          : []),
       ])
     }
     if (path === '/api/admin/people' && method === 'GET') {
       admin(u)
-      const q = String(url.searchParams.get('q') || '').trim().slice(0,100)
-      const result = pageQuery(db,
-        "SELECT u.id,u.name,u.department,SUM(CASE WHEN r.activity_id IS NOT NULL AND r.cancelled_at IS NULL THEN 1 ELSE 0 END) registeredCount,SUM(CASE WHEN r.confirmed_at IS NOT NULL AND r.cancelled_at IS NULL THEN 1 ELSE 0 END) confirmedCount,COUNT(r.activity_id) historicalRegisteredCount,SUM(CASE WHEN r.cancelled_at IS NOT NULL THEN 1 ELSE 0 END) withdrawnCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' AND (instr(lower(u.id),lower(?))>0 OR instr(lower(u.name),lower(?))>0 OR instr(lower(u.department),lower(?))>0) GROUP BY u.id ORDER BY u.department,u.name,u.id",[q,q,q],url)
+      const q = String(url.searchParams.get('q') || '')
+        .trim()
+        .slice(0, 100)
+      const result = pageQuery(
+        db,
+        "SELECT u.id,u.name,u.department,SUM(CASE WHEN r.activity_id IS NOT NULL AND r.cancelled_at IS NULL THEN 1 ELSE 0 END) registeredCount,SUM(CASE WHEN r.confirmed_at IS NOT NULL AND r.cancelled_at IS NULL THEN 1 ELSE 0 END) confirmedCount,COUNT(r.activity_id) historicalRegisteredCount,SUM(CASE WHEN r.cancelled_at IS NOT NULL THEN 1 ELSE 0 END) withdrawnCount FROM users u LEFT JOIN registrations r ON r.user_id=u.id WHERE u.role='counselor' AND (instr(lower(u.id),lower(?))>0 OR instr(lower(u.name),lower(?))>0 OR instr(lower(u.department),lower(?))>0) GROUP BY u.id ORDER BY u.department,u.name,u.id",
+        [q, q, q],
+        url,
+      )
       const rows = withExternalCounts(Array.isArray(result) ? result : result.rows)
-      return send(res,200,Array.isArray(result) ? rows : { ...result,rows })
+      return send(res, 200, Array.isArray(result) ? rows : { ...result, rows })
     }
     if (path === '/api/admin/person-records' && method === 'GET') {
       admin(u)
       const userId = url.searchParams.get('id')
       if (!userId || !get('SELECT id FROM users WHERE id=?', userId)) fail(404, '人员不存在')
-      return send(res,200,personalRecords(db,userId,{ url }))
+      return send(res, 200, personalRecords(db, userId, { url }))
     }
     if (path === '/api/admin/activities' && method === 'GET') {
       admin(u)
@@ -809,39 +1024,59 @@ const server = http.createServer(async (req, res) => {
     }
     if (path === '/api/admin/activities' && method === 'POST') {
       admin(u)
-      const v = activityInput(await body(req))
-      const result = write(req, true, actor => {
+      const input = await body(req)
+      const v = activityInput(input)
+      const result = write(req, true, (actor) => {
         const r = run(
-          'INSERT INTO activities(title,description,location,starts_at,ends_at,capacity,credit_hours,created_at) VALUES(?,?,?,?,?,?,?,?)',
-          ...v, Date.now(),
+          'INSERT INTO activities(title,description,location,starts_at,ends_at,capacity,credit_hours,created_at,attendance_enabled) VALUES(?,?,?,?,?,?,?,?,?)',
+          ...v,
+          Date.now(),
+          input.attendanceEnabled ? 1 : 0,
         )
         return dto(activity(Number(r.lastInsertRowid), actor))
       })
       return send(res, 201, result)
     }
+    const deleteActivityMatch = path.match(/^\/api\/admin\/activities\/(\d+)\/delete$/)
+    if (deleteActivityMatch && method === 'POST') {
+      const id = Number(deleteActivityMatch[1])
+      write(req, true, (actor) => {
+        activity(id, actor)
+        if (get('SELECT 1 FROM registrations WHERE activity_id=? LIMIT 1', id) ||
+            get('SELECT 1 FROM attendance_records WHERE activity_id=? LIMIT 1', id) ||
+            get('SELECT 1 FROM experiences WHERE activity_id=? LIMIT 1', id))
+          fail(409, '活动已有报名或参加记录，不能删除；可以取消活动以保留记录')
+        run('DELETE FROM attendance_sessions WHERE activity_id=?', id)
+        run("DELETE FROM notifications WHERE target_type='activity' AND target_id=?", String(id))
+        run('DELETE FROM activities WHERE id=?', id)
+      })
+      return send(res, 200, { ok: true })
+    }
     let m = path.match(/^\/api\/activities\/(\d+)$/)
     if (m && method === 'GET') {
       const a = activity(Number(m[1]), u)
-      if (a.status !== 'published' && !a.registered && !a.withdrawn_at && u.role !== 'admin') fail(404, '活动不存在')
+      if (a.status !== 'published' && !a.registered && !a.withdrawn_at && u.role !== 'admin')
+        fail(404, '活动不存在')
       return send(res, 200, dto(a))
     }
     m = path.match(/^\/api\/activities\/(\d+)\/register$/)
     if (m && method === 'POST') {
-      const id=Number(m[1])
-      registration.register(id,u.id,()=>authorizeMutation(req))
-      return send(res,200,dto(activity(id,u)))
+      const id = Number(m[1])
+      registration.register(id, u.id, () => authorizeMutation(req))
+      return send(res, 200, dto(activity(id, u)))
     }
     if (m && method === 'DELETE') {
-      const id=Number(m[1])
-      registration.cancel(id,u.id,()=>authorizeMutation(req))
-      return send(res,200,dto(activity(id,u)))
+      const id = Number(m[1])
+      registration.cancel(id, u.id, () => authorizeMutation(req))
+      return send(res, 200, dto(activity(id, u)))
     }
     m = path.match(/^\/api\/admin\/activities\/(\d+)$/)
     if (m && method === 'PUT') {
       admin(u)
       const input = await body(req)
-      const id = Number(m[1]), v = activityInput(input)
-      const result = write(req, true, actor => {
+      const id = Number(m[1]),
+        v = activityInput(input)
+      const result = write(req, true, (actor) => {
         const a = activity(id, actor)
         if (a.status !== 'published') fail(409, '已取消的活动不能修改')
         if (v[5] > 0 && v[5] < a.registered_count) fail(409, '人数上限不能少于已报名人数')
@@ -853,20 +1088,35 @@ const server = http.createServer(async (req, res) => {
           (v[6] !== a.credit_hours || v[3] !== a.starts_at)
         )
           fail(409, '已有参加确认，不能更改开始时间或学时')
-        if (v[3] !== a.starts_at && get('SELECT 1 FROM attendance_records WHERE activity_id=? LIMIT 1', id))
+        if (
+          v[3] !== a.starts_at &&
+          get('SELECT 1 FROM attendance_records WHERE activity_id=? LIMIT 1', id)
+        )
           fail(409, '已有签到记录，不能更改开始时间')
         if (v[0] !== a.title || v[3] !== a.starts_at) {
           const date = new Date(v[3] + 8 * 3600000).toISOString().slice(0, 10)
-          if (get(`SELECT 1 FROM registrations r JOIN external_trainings e ON e.user_id=r.user_id
+          if (
+            get(
+              `SELECT 1 FROM registrations r JOIN external_trainings e ON e.user_id=r.user_id
             WHERE r.activity_id=? AND r.confirmed_at IS NOT NULL AND r.cancelled_at IS NULL
-              AND e.title=? AND e.occurred_on=? AND e.status='approved' LIMIT 1`, id, v[0], date))
+              AND e.title=? AND e.occurred_on=? AND e.status='approved' LIMIT 1`,
+              id,
+              v[0],
+              date,
+            )
+          )
             fail(409, '修改后与已通过的自行提交活动重复，不能重复认定学时')
         }
-        if (v[3] !== a.starts_at || v[4] !== a.ends_at || v[2] !== a.location)
-          run('UPDATE attendance_sessions SET closes_at=MIN(closes_at,?) WHERE activity_id=?', Date.now(), id)
+        if (v[3] !== a.starts_at || v[4] !== a.ends_at || v[2] !== a.location || input.attendanceEnabled === false)
+          run(
+            'UPDATE attendance_sessions SET closes_at=MIN(closes_at,?) WHERE activity_id=?',
+            Date.now(),
+            id,
+          )
         run(
-          'UPDATE activities SET title=?,description=?,location=?,starts_at=?,ends_at=?,capacity=?,credit_hours=? WHERE id=?',
+          'UPDATE activities SET title=?,description=?,location=?,starts_at=?,ends_at=?,capacity=?,credit_hours=?,attendance_enabled=? WHERE id=?',
           ...v,
+          input.attendanceEnabled === undefined ? a.attendance_enabled : Number(input.attendanceEnabled),
           id,
         )
         return dto(activity(id, actor))
@@ -902,9 +1152,11 @@ const server = http.createServer(async (req, res) => {
       return send(
         res,
         200,
-        pageQuery(db,
+        pageQuery(
+          db,
           'SELECT u.id,u.name,u.department,r.registered_at registeredAt,r.confirmed_at confirmedAt FROM registrations r JOIN users u ON r.user_id=u.id WHERE r.activity_id=? AND r.cancelled_at IS NULL ORDER BY r.registered_at,u.id',
-          [Number(m[1])], url,
+          [Number(m[1])],
+          url,
         ),
       )
     }
@@ -957,8 +1209,13 @@ const server = http.createServer(async (req, res) => {
 })
 if (require.main === module) {
   const host = process.env.HOST || '127.0.0.1'
-  server.listen({ port: Number(process.env.PORT || 3000), host, backlog: Number(process.env.LISTEN_BACKLOG || 2048) }, () =>
-    console.log(`Listening on ${host}:${server.address().port}`),
+  server.listen(
+    {
+      port: Number(process.env.PORT || 3000),
+      host,
+      backlog: Number(process.env.LISTEN_BACKLOG || 2048),
+    },
+    () => console.log(`Listening on ${host}:${server.address().port}`),
   )
 }
 server.requestTimeout = 15000

@@ -8,7 +8,10 @@ function migrateCreditUnits(db) {
   db.exec('BEGIN IMMEDIATE')
   try {
     for (const [table, oldName, newName] of columns) {
-      const names = db.prepare('PRAGMA table_info(' + table + ')').all().map(column => column.name)
+      const names = db
+        .prepare('PRAGMA table_info(' + table + ')')
+        .all()
+        .map((column) => column.name)
       if (names.includes(oldName)) {
         if (names.includes(newName)) throw new Error('学时字段冲突，请先核对数据库单位：' + table)
         // 标识符完全由上面的固定常量给定，不接收用户输入。

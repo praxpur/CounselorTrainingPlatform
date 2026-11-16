@@ -1,0 +1,4 @@
+# WXML 表达式与 HTML 插值语法不同，不使用通用 HTML 格式化器。
+**/*.wxml
+**/node_modules/**
+tmp/**

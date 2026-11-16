@@ -7,11 +7,28 @@
       <view class="card" wx:for="{{sessions}}" wx:key="phase">
         <view class="title">{{item.phaseLabel}} · {{item.methodLabel}}</view>
         <view class="muted">有效至 {{item.closesText}}{{item.radius ? ' · 需在指定现场范围内' : ''}}</view>
+        <view class="muted" wx:if="{{item.method === 'both'}}">扫码后将自动获取位置并验证现场距离，请允许使用位置权限。</view>
+        <view class="muted" wx:if="{{item.method === 'location'}}">将自动获取位置并验证现场距离，请允许使用位置权限。</view>
+        <button wx:if="{{item.method !== 'qr'}}" data-phase="{{item.phase}}" bindtap="checkLocation" loading="{{locating}}" disabled="{{busy || locating || loading}}">查看当前位置与现场距离</button>
         <button class="primary" data-phase="{{item.phase}}" bindtap="attend" loading="{{busy}}" disabled="{{busy || loading || !item.active || item.done}}">{{item.done ? '已完成' : item.active ? '立即' + item.phaseLabel : '尚未开放或已截止'}}</button>
       </view>
+      <view class="card" wx:if="{{locationInfo}}">
+        <view class="title">本次定位结果</view>
+        <view class="line">{{locationInfo.inRange ? '在允许范围内' : '不在允许范围内'}}</view>
+        <view>距现场中心约 {{locationInfo.distance}} 米，允许范围 {{locationInfo.radius}} 米</view>
+        <view>定位精度约 {{locationInfo.accuracy}} 米{{locationInfo.accurate ? '' : '，精度不足，请到开阔处重试'}}</view>
+        <view class="muted">当前位置：{{locationInfo.latitudeText}}，{{locationInfo.longitudeText}}</view>
+        <view class="muted">现场中心：{{locationInfo.centerLatitude}}，{{locationInfo.centerLongitude}}</view>
+        <view class="muted">获取时间：{{locationInfo.timeText}}。此处仅核对位置，不代表已完成签到。</view>
+        <button bindtap="showLocation">在地图中查看当前位置</button>
+      </view>
+      <view class="muted" wx:if="{{locationError}}">{{locationError}}</view>
       <view class="muted" wx:if="{{!loading && !errorMessage && !sessions.length}}">管理员尚未开放签到，请稍后刷新。</view>
       <button bindtap="load" disabled="{{loading || busy}}">刷新签到状态</button>
-      <view class="card" wx:for="{{records}}" wx:key="phase">{{item.phaseLabel}}：{{item.timeText}}</view>
+      <view class="card" wx:for="{{records}}" wx:key="phase">
+        <view>{{item.phaseLabel}}成功 · {{item.methodLabel}} · {{item.timeText}}</view>
+        <view class="muted" wx:if="{{item.method !== 'qr' && item.distance !== null && item.distance !== undefined}}">定位验证通过，距现场中心约 {{item.distance}} 米，定位精度约 {{item.accuracy}} 米。</view>
+      </view>
     </view>
   </scroll-view>
 </view>

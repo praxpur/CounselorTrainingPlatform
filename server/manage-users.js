@@ -12,23 +12,31 @@ async function main() {
   const { db } = require('./server')
   try {
     if (command === 'bootstrap') {
-      const count = db.prepare("SELECT COUNT(*) n FROM credentials c JOIN users u ON c.user_id=u.id WHERE u.role='admin'").get().n
+      const count = db
+        .prepare(
+          "SELECT COUNT(*) n FROM credentials c JOIN users u ON c.user_id=u.id WHERE u.role='admin'",
+        )
+        .get().n
       if (count) throw new Error('已有管理员密码，新增管理员请使用 import')
       if (!Array.isArray(input) || input.length !== 1 || input[0].role !== 'admin')
         throw new Error('bootstrap 需要只包含一个 admin 的 JSON 名单')
     }
     if (command === 'reset') {
-      if (!input || typeof input.id !== 'string') throw new Error('重置文件须包含 id 与 initialPassword')
+      if (!input || typeof input.id !== 'string')
+        throw new Error('重置文件须包含 id 与 initialPassword')
       await resetPassword(db, input.id, input.initialPassword)
       console.log('密码已重置，旧会话已撤销，下次登录须修改密码')
     } else {
       const result = await importRoster(db, input, { allowAdmins: true })
       console.log('已导入 ' + result.imported + ' 个账号；初始密码下次登录必须修改')
     }
-  } finally { db.close() }
+  } finally {
+    db.close()
+  }
 }
-if (require.main === module) main().catch(error => {
-  // 不输出包含原始文件内容的 JSON 解析错误或数据库细节。
-  console.error(error instanceof SyntaxError ? '名单 JSON 格式错误' : error.message)
-  process.exitCode = 1
-})
+if (require.main === module)
+  main().catch((error) => {
+    // 不输出包含原始文件内容的 JSON 解析错误或数据库细节。
+    console.error(error instanceof SyntaxError ? '名单 JSON 格式错误' : error.message)
+    process.exitCode = 1
+  })

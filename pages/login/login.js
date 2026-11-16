@@ -13,11 +13,14 @@ Page({
     this.setData({ loading: true })
     try {
       const result = await api.request('/api/auth/login', 'POST', {
-        id: this.data.id.trim(), password: this.data.password,
+        id: this.data.id.trim(),
+        password: this.data.password,
       })
       api.setToken(result.token)
       this.setData({ password: '' })
-      wx.reLaunch({ url: result.mustChangePassword ? '/pages/password/password' : '/pages/index/index' })
+      wx.reLaunch({
+        url: result.mustChangePassword ? '/pages/password/password' : '/pages/index/index',
+      })
     } catch (error) {
       api.error(error)
     } finally {

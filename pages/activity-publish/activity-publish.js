@@ -26,6 +26,7 @@ Page({
       endTime: '',
       capacity: '',
       creditHours: '',
+      attendanceEnabled: false,
     },
   },
   onLoad(options) {
@@ -58,6 +59,7 @@ Page({
           endTime,
           capacity: activity.capacity === null ? '' : String(activity.capacity),
           creditHours: String(activity.creditHours),
+          attendanceEnabled: Boolean(activity.attendanceEnabled),
         },
       })
     } catch (error) {
@@ -95,7 +97,8 @@ Page({
     }
     if (
       !Number.isFinite(Number(form.creditHours)) ||
-      Math.abs(Number(form.creditHours) * 100 - Math.round(Number(form.creditHours) * 100)) > 1e-7 ||
+      Math.abs(Number(form.creditHours) * 100 - Math.round(Number(form.creditHours) * 100)) >
+        1e-7 ||
       Number(form.creditHours) < 0 ||
       Number(form.creditHours) > 60000
     ) {
@@ -124,6 +127,7 @@ Page({
           endsAt: form.endDate + 'T' + form.endTime + ':00+08:00',
           capacity: form.capacity.trim() === '' ? null : Number(form.capacity),
           creditHours: Number(form.creditHours),
+          attendanceEnabled: form.attendanceEnabled,
         },
       )
       this.saved = true

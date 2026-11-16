@@ -1,3 +1,4 @@
+// 页面分页共用逻辑：限制显示数据量，并让过期请求无法覆盖当前列表。
 const PAGE_SIZE = 20
 const MAX_VISIBLE_ROWS = 100
 const MAX_VISIBLE_JSON_LENGTH = 100000
@@ -76,17 +77,19 @@ async function loadList(owner, api, options) {
   owner.setData({
     loading: true,
     errorMessage: '',
-    ...(append ? {} : {
-      [field]: [],
-      [moreKey]: false,
-      [offsetKey]: null,
-      [totalKey]: 0,
-      [previousKey]: null,
-      [windowKey]: false,
-      [fromKey]: 0,
-      [toKey]: 0,
-      ...start,
-    }),
+    ...(append
+      ? {}
+      : {
+          [field]: [],
+          [moreKey]: false,
+          [offsetKey]: null,
+          [totalKey]: 0,
+          [previousKey]: null,
+          [windowKey]: false,
+          [fromKey]: 0,
+          [toKey]: 0,
+          ...start,
+        }),
   })
 
   try {
@@ -99,8 +102,8 @@ async function loadList(owner, api, options) {
     let firstIndex = append ? (owner.data[fromKey] || 1) - 1 : offset
 
     // 列表条数或序列化长度超限时，只保留本次返回的一页。
-    const exceedsDisplayLimit = rows.length > MAX_VISIBLE_ROWS ||
-      JSON.stringify(rows).length > MAX_VISIBLE_JSON_LENGTH
+    const exceedsDisplayLimit =
+      rows.length > MAX_VISIBLE_ROWS || JSON.stringify(rows).length > MAX_VISIBLE_JSON_LENGTH
     if (exceedsDisplayLimit) {
       rows = incoming
       firstIndex = offset

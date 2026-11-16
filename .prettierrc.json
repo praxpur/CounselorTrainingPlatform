@@ -1,0 +1,11 @@
+{
+  "semi": false,
+  "singleQuote": true,
+  "tabWidth": 2,
+  "printWidth": 100,
+  "trailingComma": "all",
+  "arrowParens": "always",
+  "overrides": [
+    { "files": "*.wxss", "options": { "parser": "css" } }
+  ]
+}

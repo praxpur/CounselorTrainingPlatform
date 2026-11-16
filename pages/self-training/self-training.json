@@ -1,1 +1,6 @@
-{"usingComponents":{"navigation-bar":"/components/navigation-bar/navigation-bar","proof-files":"/components/proof-files/proof-files"}}
+{
+  "usingComponents": {
+    "navigation-bar": "/components/navigation-bar/navigation-bar",
+    "proof-files": "/components/proof-files/proof-files"
+  }
+}

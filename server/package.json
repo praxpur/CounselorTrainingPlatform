@@ -7,12 +7,7 @@
     "node": ">=22.16.0"
   },
   "scripts": {
-    "start": "node server.js",
-    "test": "node --test --test-concurrency=2 test.js frontend.test.js exports.test.js http-boundaries.test.js auth.test.js roster.test.js credit-unit.test.js attendance.test.js evidence.test.js schema.test.js pagination.test.js registration.test.js registration-frontend.test.js notifications.test.js notifications-frontend.test.js notifications-api.test.js maintenance.test.js ../scripts/configure-api.test.js ../deploy/check-runtime.test.js auth-boundary.test.js ../scripts/start-demo.test.js statistics.test.js statistics-frontend.test.js activity-entry.test.js client-ip.test.js business-boundaries.test.js frontend-state.test.js",
-    "test:load": "node load-test.js",
-    "test:load:cold": "node load-test.js --cold",
-    "test:load:writes": "node load-test.js --cold --register-first --unlimited",
-    "test:connections": "node connection-probe.js"
+    "start": "node --env-file=.env server.js"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

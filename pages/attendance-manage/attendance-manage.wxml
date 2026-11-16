@@ -14,7 +14,7 @@
           <view class="field-label">允许范围（10—2000 米）</view>
           <input type="digit" value="{{radius}}" data-field="radius" bindinput="input" />
         </block>
-        <view class="muted">重新开放会使该类型的旧二维码立即失效，已有签到记录保留。签退前须先签到。</view>
+        <view class="muted">下方显示已保存的验证方式。重新开放会使该类型的旧二维码立即失效，已有签到记录保留。签退前须先签到。</view>
         <button class="primary" bindtap="open" loading="{{busy}}" disabled="{{busy}}">开放 / 刷新验证</button>
       </view>
       <view class="card" wx:if="{{qrImage}}">
@@ -23,7 +23,7 @@
         <view class="muted">有效至 {{qrExpires}}，过期后请重新开放</view>
       </view>
       <view class="card" wx:for="{{sessions}}" wx:key="phase">
-        <view>{{item.phaseLabel}} · {{item.active ? '开放中' : '已截止'}} · {{item.closesText}}</view>
+        <view>{{item.phaseLabel}} · {{item.methodLabel}} · {{item.active ? '开放中' : '已截止'}} · {{item.closesText}}</view>
         <button wx:if="{{item.active}}" data-phase="{{item.phase}}" bindtap="close" disabled="{{busy}}">立即关闭</button>
       </view>
       <view class="section-title">现场记录（学时仍需确认参加）</view>

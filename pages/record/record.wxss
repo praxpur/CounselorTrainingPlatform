@@ -48,4 +48,7 @@
   background: #fdeaea;
 }
 
-.review-state.withdrawn { color: #64748b; background: #eef1f8; }
+.review-state.withdrawn {
+  color: #64748b;
+  background: #eef1f8;
+}

@@ -26,7 +26,7 @@
           <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="attendees">
             报名与参加确认
           </button>
-          <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="attendanceSettings">
+          <button wx:if="{{item.attendanceEnabled}}" class="button-mini" size="mini" data-id="{{item.id}}" bindtap="attendanceSettings">
             签到/签退设置
           </button>
           <button
@@ -47,6 +47,7 @@
           >
             取消活动
           </button>
+          <button class="button-mini" size="mini" data-id="{{item.id}}" bindtap="deleteActivity" disabled="{{deleting}}">删除活动</button>
         </view>
       </view>
       <view class="muted" wx:if="{{windowed}}">当前显示第 {{displayFrom}}—{{displayTo}} 条，可返回上一页。</view>

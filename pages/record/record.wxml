@@ -20,7 +20,7 @@
           data-filter="pending"
           bindtap="changeFilter"
         >
-          未审核
+          待确认 / 待审核
         </view>
         <view
           class="filter {{filter === 'reviewed' ? 'active' : ''}}"
@@ -47,9 +47,6 @@
         <view class="line">
           认定学时 {{item.recognizedHours}} 学时 · 活动学时 {{item.creditHours}} 学时
         </view>
-        <view class="muted" wx:if="{{item.reviewStatus === 'unsubmitted' && !item.canSubmit}}">
-          活动开始后可提交培训经历
-        </view>
         <block wx:if="{{item.experienceId || item.external}}">
           <view class="line">培训经历：{{item.experience}}</view>
           <view class="muted">经历审核：{{item.experienceLabel}}</view>
@@ -63,43 +60,20 @@
           <button
             class="button-mini primary"
             size="mini"
-            wx:if="{{item.canSubmit && selectedId !== item.id}}"
+            wx:if="{{item.canSubmit}}"
             data-id="{{item.id}}"
             bindtap="editExperience"
           >
-            {{item.reviewStatus === 'rejected' ? '重新提交经历' : '提交培训经历'}}
+            重新提交经历
           </button>
-        </view>
-        <view wx:if="{{selectedId === item.id}}">
-          <textarea
-            placeholder="填写本次活动的培训经历"
-            value="{{description}}"
-            bindinput="input"
-            maxlength="2000"
-          ></textarea>
-          <proof-files files="{{proofs}}" editable="{{!busy}}" bindchange="proofsChanged" bindbusy="uploadState"></proof-files>
-          <view class="actions">
-            <button
-              class="button-mini primary"
-              size="mini"
-              bindtap="submit"
-              loading="{{busy}}"
-              disabled="{{busy || uploading}}"
-            >
-              提交审核
-            </button>
-            <button class="button-mini" size="mini" bindtap="cancel" disabled="{{busy}}">
-              取消
-            </button>
-          </view>
         </view>
       </view>
       <view class="empty" wx:if="{{!loading && !errorMessage && !records.length}}">
         暂无对应的培训记录
       </view>
       <view class="muted" wx:if="{{windowed}}">当前显示第 {{displayFrom}}—{{displayTo}} 条，可返回上一页。</view>
-      <button wx:if="{{previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{loading || busy || uploading}}">上一页</button>
-      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading || busy || uploading}}">加载更多（{{records.length}} / {{total}}）</button>
+      <button wx:if="{{previousOffset !== null && previousOffset !== undefined}}" bindtap="previous" disabled="{{loading}}">上一页</button>
+      <button wx:if="{{hasMore}}" bindtap="more" disabled="{{loading}}">加载更多（{{records.length}} / {{total}}）</button>
     </view>
   </scroll-view>
 </view>

@@ -60,10 +60,7 @@
       "desc": "用于活动现场定位签到、签退和管理员选择活动地点"
     }
   },
-  "requiredPrivateInfos": [
-    "getLocation",
-    "chooseLocation"
-  ],
+  "requiredPrivateInfos": ["getLocation", "chooseLocation"],
   "usingComponents": {
     "notification-entry": "/components/notification-entry/notification-entry",
     "status-panel": "/components/status-panel/status-panel"

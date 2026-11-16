@@ -32,18 +32,28 @@ Page({
     this.identityEpoch = (this.identityEpoch || 0) + 1
     this.setData({ isCounselor: false })
   },
-  onUnload() { this.identityEpoch = (this.identityEpoch || 0) + 1 },
+  onUnload() {
+    this.identityEpoch = (this.identityEpoch || 0) + 1
+  },
   changeYear(event) {
     const yearIndex = Number(event.detail.value)
-    this.setData({ yearIndex, year: yearIndex === 0 ? null : years[yearIndex - 1], activities: [] })
+    this.setData({
+      yearIndex,
+      year: yearIndex === 0 ? null : years[yearIndex - 1],
+      activities: [],
+    })
     this.load()
   },
   load(append = false) {
     const path = '/api/activities' + (this.data.year === null ? '' : '?year=' + this.data.year)
-    return loadList(this,api,{ path,field:'activities',map:api.format,append })
+    return loadList(this, api, { path, field: 'activities', map: api.format, append })
   },
-  previous(){return this.load({pageOffset:this.data.previousOffset})},
-  more() { return this.load(true) },
+  previous() {
+    return this.load({ pageOffset: this.data.previousOffset })
+  },
+  more() {
+    return this.load(true)
+  },
   open(e) {
     wx.navigateTo({ url: '/pages/course/detail?id=' + e.currentTarget.dataset.id })
   },

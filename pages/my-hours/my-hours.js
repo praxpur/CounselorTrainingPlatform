@@ -24,15 +24,31 @@ Page({
     this.load()
   },
   load(append = false) {
-    return loadList(this,api,{ path:'/api/my/annual?year='+this.data.year,field:'records',rowsKey:'records',append,
-      start:{ report:null,months:[] },map:record=>({ ...record,startsText:api.time(record.startsAt) }),
-      after:(report,rows)=>{
-        const max=Math.max(1,...report.months.map(month=>month.hours))
-        return { report:{ ...report,records:rows },months:report.months.map(month=>({ ...month,width:Math.round(month.hours/max*100) })) }
-      } })
+    return loadList(this, api, {
+      path: '/api/my/annual?year=' + this.data.year,
+      field: 'records',
+      rowsKey: 'records',
+      append,
+      start: { report: null, months: [] },
+      map: (record) => ({ ...record, startsText: api.time(record.startsAt) }),
+      after: (report, rows) => {
+        const max = Math.max(1, ...report.months.map((month) => month.hours))
+        return {
+          report: { ...report, records: rows },
+          months: report.months.map((month) => ({
+            ...month,
+            width: Math.round((month.hours / max) * 100),
+          })),
+        }
+      },
+    })
   },
-  previous(){return this.load({pageOffset:this.data.previousOffset})},
-  more() { return this.load(true) },
+  previous() {
+    return this.load({ pageOffset: this.data.previousOffset })
+  },
+  more() {
+    return this.load(true)
+  },
   async exportData() {
     if (this.data.exporting || this.data.loading || !this.data.report) return
     this.setData({ exporting: true })

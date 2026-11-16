@@ -40,7 +40,7 @@
             <view class="stat-number">{{report.approvedCount}}</view>
           </view>
           <view class="stat-card">
-            <view class="muted">未审核（含未提交）</view>
+            <view class="muted">待确认 / 待审核</view>
             <view class="stat-number">{{report.pendingCount}}</view>
           </view>
           <view class="stat-card">
